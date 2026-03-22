@@ -1,0 +1,258 @@
+% Chapter 8: Large Language Model Steering
+% Status: DRAFT — Connects HyperSteer-Weight to the theoretical framework
+
+\chapter{Large Language Model Steering}
+\label{ch:llm-steering}
+
+The preceding chapters developed a theoretical framework for multi-agent learning: the Meta-MAPG theorem (Chapter~\ref{ch:meta-mapg}) for individually rational agents, the Team Policy Gradient theorem (Chapter~\ref{ch:team-pg}) for collective policies, and the Mechanism Design--Meta-Learning Isomorphism (Chapter~\ref{ch:cooperative}) for orchestrated systems. This chapter grounds the abstract framework in a concrete application: steering the behaviour of a frozen pre-trained Large Language Model (LLM) at deployment time, without gradient-based fine-tuning.
+
+We present the LLM steering problem as a two-agent cooperative game in the sense of Definition~\ref{def:orchestrated-game}. The first agent is the frozen LLM, whose ``policy'' is its next-token distribution conditioned on its input. The second agent is a \emph{hypernetwork}---a lightweight auxiliary model that generates parameter updates for the LLM, conditioned on a natural-language steering prompt. We describe the \emph{HyperSteer-Weight} architecture, developed in~\cite{hypersteerweight2025}, which instantiates this two-agent structure by generating LoRA-style weight updates from a steering prompt via learned low-rank bases and a prompt-conditioned coefficient generator. We then show that HyperSteer-Weight is a special case of the MoE team policy of Chapter~\ref{ch:team-pg}, and that its training procedure is a special case of the orchestrator's mechanism design problem of Chapter~\ref{ch:cooperative}.
+
+\section{The Problem of LLM Adaptation}
+\label{sec:llm-adaptation}
+
+\subsection{Preliminaries: Autoregressive Language Models}
+\label{subsec:llm-prelim}
+
+Let $B_\theta$ denote a pre-trained autoregressive language model with $L$ layers and hidden dimension~$d$, parametrised by frozen weights $\theta\in\mathbb{R}^p$. Let $\mathcal{V}$ denote the vocabulary (the finite set of tokens) and $\mathcal{V}^*$ the set of all finite token sequences. Given an input sequence $x = (x_1,\ldots,x_T) \in \mathcal{V}^*$, the model defines next-token probabilities:
+\begin{equation}\label{eq:llm-next-token}
+  p_\theta(v \mid x_{1:t}) \quad \text{for } v\in\mathcal{V},\; t\in\{1,\ldots,T\}.
+\end{equation}
+The model generates text autoregressively: each token is sampled from $p_\theta(\cdot \mid x_{1:t})$ and appended to the sequence.
+
+During \emph{pre-training}, the model minimises the cross-entropy loss over a large corpus, acquiring broad linguistic and world knowledge. The resulting model exhibits \emph{latent capabilities}---such as few-shot generalisation and multi-step reasoning---that are present in the weights but whose expression depends on appropriate elicitation~\cite{brown2020}.
+
+\subsection{Three Paradigms of Adaptation}
+\label{subsec:adaptation-paradigms}
+
+The problem of making the pre-trained model useful for a specific task can be addressed at three levels of intervention, each with different costs and capabilities.
+
+\paragraph{Prompt engineering.} The input sequence $x$ is crafted to elicit the desired behaviour (e.g., Chain-of-Thought reasoning~\cite{wei2022cot}). This is the lightest intervention---no parameters are changed---but it is black-box, hard to scale, and limited by the model's sensitivity to prompt phrasing~\cite{cao2024}.
+
+\paragraph{Fine-tuning.} The weights $\theta$ are updated via gradient descent on a task-specific dataset $\mathcal{D}_{FT}$, minimising the cross-entropy loss:
+\begin{equation}\label{eq:fine-tuning}
+  \theta^* = \arg\min_\theta\; \E_{(x,y)\sim\mathcal{D}_{FT}}\!\left[-\frac{1}{K}\sum_{t=1}^K \log p_\theta(y_t \mid x, y_{1:t-1})\right].
+\end{equation}
+This is effective but computationally expensive. \emph{Parameter-efficient fine-tuning} (PEFT) methods such as adapters~\cite{houlsby2019}, prefix tuning~\cite{li2021prefix}, and low-rank adaptation (LoRA)~\cite{hu2022lora} reduce the cost by updating only a small subset of parameters, but still require per-task gradient optimisation and curated datasets.
+
+\paragraph{Steering.} A lightweight intervention at inference time that modifies the model's behaviour without gradient-based training on task-specific data. Steering methods can be divided into \emph{activation steering} (adding vectors to the residual stream) and \emph{weight steering} (modifying model parameters directly). Both aim to induce domain-appropriate behaviour from a natural-language description of the desired concept---a \emph{steering prompt}.
+
+\subsection{Activation Steering vs.\ Weight Steering}
+\label{subsec:act-vs-weight}
+
+\paragraph{Activation steering.} At inference time, a \emph{steering vector} $z\in\mathbb{R}^d$ is added to the residual stream at a chosen layer. Methods differ in how $z$ is obtained: contrastive activation addition computes $z$ as the mean difference of activations between positive and negative examples of the target behaviour~\cite{rimsky2024}; dictionary learning approaches (sparse autoencoders) discover interpretable features that can be amplified or suppressed~\cite{huben2024,joshi2025}. The largest steering benchmark, AxBench~\cite{wu2025}, shows that these methods generalise across thousands of concepts but lag behind fine-tuning baselines.
+
+The key limitation of activation steering is that the intervention is \emph{additive} and acts at a single (or few) layers. This restricts the class of behavioural modifications achievable.
+
+\paragraph{Weight steering.} Rather than modifying activations, weight steering modifies the parameters themselves: $\theta_{\mathrm{steer}} = \theta + \Delta\theta$. The parameter update $\Delta\theta$ is applied once before generation, imposing no per-token overhead. \emph{Task vectors}~\cite{ilharco2023} compute $\Delta\theta$ as the difference between a fine-tuned model and the base model; \emph{contrastive weight steering}~\cite{fierro2025} derives $\Delta\theta$ from two fine-tuned models (one positive, one negative). These methods achieve stronger out-of-sample control than activation steering but require separate fine-tuning runs for each concept---defeating the purpose of avoiding per-task training.
+
+\subsection{The Gap: Prompt-Conditioned Weight Steering}
+\label{subsec:gap}
+
+The literature suggests a gap: a steering method that (i) provides prompt-conditioned, domain-specific adaptation, (ii) does not require task-specific gradient training at deployment, and (iii) operates in weight space, approximating the effects of PEFT. Filling this gap is the contribution of HyperSteer-Weight.
+
+\section{HyperSteer-Weight: Architecture}
+\label{sec:hsw-architecture}
+
+HyperSteer-Weight~\cite{hypersteerweight2025} addresses the gap identified above by using a \emph{hypernetwork}---an auxiliary model that generates parameters for the primary model~\cite{ha2017}---to produce prompt-conditioned weight updates for a frozen LLM. The architecture decomposes into two components: a set of global learnable low-rank bases (shared across all concepts) and a lightweight hypernetwork that predicts coefficients to recombine these bases for a specific concept.
+
+\subsection{Steered Parameters}
+\label{subsec:steered-params}
+
+We target the Multi-Layer Perceptron (MLP) submodules of the Transformer, as these components are widely hypothesised to store factual knowledge~\cite{meng2022,dai2022}. For a subset of layers $\mathcal{L}_{\mathrm{steer}}\subseteq\{1,\ldots,L\}$, we intervene on the up-projection $W_{\mathrm{up}}^{(\ell)}\in\mathbb{R}^{d_{\mathrm{ff}}\times d}$ and down-projection $W_{\mathrm{down}}^{(\ell)}\in\mathbb{R}^{d\times d_{\mathrm{ff}}}$, where $d_{\mathrm{ff}}$ is the feed-forward expansion dimension.
+
+\subsection{Global LoRA Bases}
+\label{subsec:lora-bases}
+
+Predicting full weight matrices is computationally intractable. Instead, for every steered layer~$\ell$, we initialise and learn \emph{static} low-rank bases:
+\begin{equation}\label{eq:lora-bases}
+  U_{\mathrm{up}}^{(\ell)} \in \mathbb{R}^{d_{\mathrm{ff}}\times r},\quad
+  V_{\mathrm{up}}^{(\ell)} \in \mathbb{R}^{r\times d},\quad
+  U_{\mathrm{down}}^{(\ell)} \in \mathbb{R}^{d\times r},\quad
+  V_{\mathrm{down}}^{(\ell)} \in \mathbb{R}^{r\times d_{\mathrm{ff}}},
+\end{equation}
+where $r \ll \min(d, d_{\mathrm{ff}})$ is the rank. These matrices are trained jointly with the hypernetwork but remain \emph{frozen at deployment}. The columns of $U^{(\ell)}$ and rows of $V^{(\ell)}$ form a ``dictionary'' of possible weight modifications; the hypernetwork's role is to determine how much to activate each direction.
+
+\subsection{The Hypernetwork}
+\label{subsec:hypernetwork}
+
+The hypernetwork $H_\phi$ is a lightweight Transformer decoder, parametrised by~$\phi$, that processes a steering prompt $s\in\mathcal{V}^*$ and generates a context-aware \emph{coefficient vector}:
+\begin{equation}\label{eq:coeff-vector}
+  c(s) \in \mathbb{R}^r.
+\end{equation}
+Optionally, $H_\phi$ may attend to the base LLM's hidden states through cross-attention, allowing the steering to be conditioned not just on the static instruction but dynamically on the specific input context. The coefficient computation is performed \emph{once per steering prompt}, maintaining $O(1)$ amortised complexity per concept.
+
+\subsection{Prompt-Conditioned Weight Updates}
+\label{subsec:weight-updates}
+
+The final weight update for each steered layer is constructed by scaling the global bases with the generated coefficients:
+\begin{equation}\label{eq:weight-update}
+  \Delta W^{(\ell)}(s) := U^{(\ell)}\,\mathrm{diag}\bigl(c(s)\bigr)\,V^{(\ell)}.
+\end{equation}
+The base model executes its forward pass using the steered weights $W_{\mathrm{steer}}^{(\ell)} = W^{(\ell)} + \Delta W^{(\ell)}(s)$. A scalar \emph{steering intensity} factor $f\geq 0$ controls the strength of the intervention: $c \leftarrow f\cdot c$. Setting $f=0$ recovers the original unsteered model.
+
+\paragraph{Architecture summary.} The complete data flow is:
+\begin{enumerate}[label=(\arabic*)]
+  \item Steering prompt $s$ is processed by $H_\phi$ to produce $c(s)\in\mathbb{R}^r$.
+  \item For each steered layer $\ell$, the weight update $\Delta W^{(\ell)} = U^{(\ell)}\,\mathrm{diag}(c(s))\,V^{(\ell)}$ is computed.
+  \item The base model $B_\theta$ processes the input $x$ with weights $W^{(\ell)} + \Delta W^{(\ell)}$ and generates output $y$.
+\end{enumerate}
+All trainable components---the hypernetwork $H_\phi$ and the LoRA bases $\{U^{(\ell)}, V^{(\ell)}\}$---are trained jointly to minimise the cross-entropy loss over a steering dataset, then frozen at deployment.
+
+\subsection{Complexity Analysis}
+\label{subsec:complexity}
+
+A key advantage of HyperSteer-Weight is its asymptotic efficiency relative to other steering methods.
+
+\paragraph{Standard autoregressive generation.} For a sequence of length $T$, the base model performs $O(T \cdot L \cdot d^2)$ computation (dominated by the attention and MLP matrix multiplications at each layer and token).
+
+\paragraph{Activation steering.} Adds a vector to the residual stream at each token, incurring $O(T \cdot d)$ additional computation per steered layer---a per-token overhead that scales linearly with sequence length.
+
+\paragraph{HyperSteer-Weight.} The hypernetwork forward pass to compute $c(s)$ is $O(|s| \cdot d_H^2)$, where $|s|$ is the steering prompt length and $d_H$ is the hypernetwork dimension. The weight update $\Delta W^{(\ell)}$ is computed once (not per token), with cost $O(d_{\mathrm{ff}} \cdot r + r \cdot d)$ per layer. After merging, generation proceeds at the base model's native speed with \emph{zero per-token overhead}. The total additional cost is $O(1)$ amortised over the generated sequence.
+
+\section{Training Objective}
+\label{sec:training-objective}
+
+\subsection{Supervised Steering Loss}
+\label{subsec:steering-loss}
+
+Given a steering dataset $\mathcal{D}_{\mathrm{steer}}$ of triplets $(x, s, y)$---where $x$ is the input, $s$ is the steering prompt (e.g., ``number theory'', ``French''), and $y = (y_1,\ldots,y_K)$ is a target (steered) continuation---HyperSteer-Weight is trained to minimise the cross-entropy loss:
+\begin{equation}\label{eq:steering-loss}
+  \mathcal{L}_{CE}(\theta_{\mathrm{steer}};\, x, y) := -\frac{1}{K}\sum_{t=1}^K \log\bigl[p_{\theta_{\mathrm{steer}}}(y_t \mid x, y_{1:t-1})\bigr],
+\end{equation}
+where $\theta_{\mathrm{steer}} = \theta + \Delta\theta(s)$ denotes the steered parameters. The full training objective is:
+\begin{equation}\label{eq:steering-objective}
+  \min_\phi\; \E_{(x,s,y)\sim\mathcal{D}_{\mathrm{steer}}}\!\left[\mathcal{L}_{CE}(\theta_{\mathrm{steer}};\, x, y)\right],
+\end{equation}
+where the optimisation is over the hypernetwork parameters $\phi$ (and the global LoRA bases, which we absorb into $\phi$ for notational simplicity). The base model parameters $\theta$ are frozen throughout.
+
+\subsection{Connection to the Reinforcement Learning Framework}
+\label{subsec:rl-connection}
+
+The training objective~\eqref{eq:steering-objective} is a supervised learning problem. However, it admits a natural interpretation in the reinforcement learning framework of the preceding chapters.
+
+\paragraph{The MDP.} Define a single-episode MDP where:
+\begin{enumerate}[label=(\roman*)]
+  \item The state at time $t$ is $s_t = (x, s, y_{1:t-1})$---the input, steering prompt, and generated tokens so far.
+  \item The action is the next token $a_t = y_t \in \mathcal{V}$.
+  \item The transition is deterministic: appending $y_t$ to the sequence.
+  \item The reward at time $t$ is $r_t = \log p_{\theta_{\mathrm{steer}}}(y_t \mid x, y_{1:t-1})$.
+\end{enumerate}
+Under this MDP, maximising the expected return $G = \sum_t r_t$ is equivalent to minimising the cross-entropy loss~\eqref{eq:steering-loss}. The policy is the steered model's next-token distribution $\pi(a_t \mid s_t) = p_{\theta_{\mathrm{steer}}}(y_t \mid x, y_{1:t-1})$.
+
+\paragraph{The two agents.} In the two-agent formulation:
+\begin{enumerate}[label=(\roman*)]
+  \item \textbf{Agent 1} (the frozen LLM): Its policy is $\pi^1(a_t \mid s_t, \theta) = p_\theta(a_t \mid s_t)$. This is fixed and does not learn.
+  \item \textbf{Agent 2} (the hypernetwork): Its ``action'' at the start of each episode is the coefficient vector $c(s)$, which modifies Agent~1's parameters. Its policy is $\pi^2(c \mid s, \phi) = \delta_{H_\phi(s)}(c)$---deterministic given the steering prompt.
+\end{enumerate}
+The joint behaviour---the steered model's output---is the result of Agent~2 modifying Agent~1's weights and Agent~1 then generating text with the modified weights. This is a \emph{sequential} game: Agent~2 moves first (choosing $c(s)$), Agent~1 responds (generating tokens with modified weights).
+
+\section{HyperSteer-Weight as a Team Policy}
+\label{sec:hsw-as-team}
+
+We now make precise the connection between HyperSteer-Weight and the MoE team policy of Chapter~\ref{ch:team-pg}.
+
+\subsection{The Isomorphism}
+\label{subsec:hsw-moe-iso}
+
+\begin{proposition}[HyperSteer-Weight as MoE team policy]\label{prop:hsw-moe}
+The HyperSteer-Weight architecture~\eqref{eq:weight-update} is isomorphic to an MoE team policy~\eqref{eq:moe-team-policy} with continuous routing, where:
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{ll}
+\textbf{MoE Team Policy} & \textbf{HyperSteer-Weight} \\
+\hline
+Expert index $k$ & Basis direction index $j\in\{1,\ldots,r\}$ \\
+Expert policy $\pi_k(\bm{a}\mid s,\theta_k)$ & Base model under $j$-th basis: $p_{\theta + U_j V_j}(\cdot)$ \\
+Routing weights $w_k(s,\theta_g)$ & Coefficients $c_j(s)$ from hypernetwork \\
+Gating network $\theta_g$ & Hypernetwork parameters $\phi$ \\
+Expert parameters $\theta_k$ & LoRA bases $(U^{(\ell)}_j, V^{(\ell)}_j)$ \\
+\end{tabular}
+\end{center}
+\end{proposition}
+
+\begin{proof}[Proof sketch]
+The weight update~\eqref{eq:weight-update} can be decomposed as a linear combination of rank-1 updates:
+\[
+  \Delta W^{(\ell)}(s) = \sum_{j=1}^r c_j(s) \cdot U_j^{(\ell)} {V_j^{(\ell)}}^\top,
+\]
+where $U_j^{(\ell)}$ and $V_j^{(\ell)}$ are the $j$-th columns of $U^{(\ell)}$ and rows of $V^{(\ell)}$ respectively, and $c_j(s)$ is the $j$-th component of the coefficient vector. Each rank-1 component $U_j V_j^\top$ defines a distinct modification of the base model---a ``behavioural mode'' or ``expert.'' The coefficient $c_j(s)$ determines how strongly this mode is activated for steering prompt~$s$---this is the routing.
+
+The key difference from the discrete MoE of~\eqref{eq:moe-team-policy} is that the ``routing'' here is continuous (real-valued coefficients rather than a probability distribution) and the ``experts'' combine additively in weight space rather than as a mixture in distribution space. This is a consequence of the linearity of the weight update; it is the weight-space analogue of the distribution-space mixture.
+\end{proof}
+
+\subsection{Implications for the Dissertation Framework}
+\label{subsec:framework-implications}
+
+The connection established by Proposition~\ref{prop:hsw-moe} has several consequences.
+
+\paragraph{Expert specialisation.} The global LoRA bases $\{U_j, V_j\}$ play the role of experts: each basis direction encodes a distinct pattern of weight modification. The training procedure (minimising~\eqref{eq:steering-objective}) encourages these bases to specialise---different directions become associated with different types of steering (e.g., one direction for ``formal tone,'' another for ``domain-specific knowledge''). This specialisation is the weight-space analogue of the expert specialisation in Chapter~\ref{ch:team-pg}.
+
+\paragraph{Routing as coordination.} The hypernetwork $H_\phi$ plays the role of the routing function: given a steering prompt~$s$, it determines which combination of expert directions to activate. The quality of steering depends not just on having good bases (experts) but on having a good hypernetwork (router) that selects the right combination for each concept. This is the coordination problem of Chapter~\ref{ch:team-pg}, instantiated in weight space.
+
+\paragraph{Gradient decomposition.} By the Team PGT (Theorem~\ref{thm:team-pgt}), the gradient of the training loss decomposes into an expert gradient (updating the LoRA bases) and a routing gradient (updating the hypernetwork). The expert gradient drives specialisation of the bases; the routing gradient drives the hypernetwork to produce better coefficient predictions. This decomposition provides a theoretical justification for the empirical observation that HyperSteer-Weight benefits from training the bases and hypernetwork jointly rather than separately.
+
+\section{HyperSteer-Weight as a Designed Mechanism}
+\label{sec:hsw-as-mechanism}
+
+The cooperative framework of Chapter~\ref{ch:cooperative} provides a second, complementary interpretation of HyperSteer-Weight.
+
+\subsection{The Orchestrator's Design}
+\label{subsec:orchestrator-design}
+
+In the language of Definition~\ref{def:orchestrated-game}:
+
+\paragraph{The orchestrator} is the system designer who chooses the architecture, the LoRA rank~$r$, the set of steered layers $\mathcal{L}_{\mathrm{steer}}$, the training dataset $\mathcal{D}_{\mathrm{steer}}$, and the loss function~\eqref{eq:steering-loss}. These choices constitute the \emph{design} $d\in\mathcal{D}$.
+
+\paragraph{Agent 1 (LLM)} is ``selfish'' in the sense that it optimises its pre-trained objective: given any set of weights, it produces the next-token distribution that maximises likelihood under its training distribution. It does not ``care'' about alignment, safety, or the orchestrator's goals---it simply follows the gradient of its loss landscape.
+
+\paragraph{Agent 2 (hypernetwork)} is ``selfish'' in the sense that it optimises the steering loss~\eqref{eq:steering-objective}: it produces the coefficient vector that minimises cross-entropy on the steering dataset. It does not directly optimise for helpfulness or harmlessness---it minimises loss.
+
+\paragraph{The mechanism.} The orchestrator's design ensures that when both agents act selfishly---the LLM following its likelihood objective, the hypernetwork minimising its loss---the resulting behaviour is aligned with the orchestrator's goals. This alignment emerges not from the agents' intentions but from the \emph{structure of the mechanism}: the choice of training data, loss function, and architectural constraints channels self-interested optimisation toward the desired outcome.
+
+\subsection{Design Instruments in HyperSteer-Weight}
+\label{subsec:design-instruments-hsw}
+
+The four design instruments of Section~\ref{subsec:design-instruments} (in Ch.~\ref{ch:cooperative}) map to concrete architectural choices:
+
+\paragraph{Reward shaping.} The cross-entropy loss~\eqref{eq:steering-loss} is the reward signal. By choosing the training dataset $\mathcal{D}_{\mathrm{steer}}$---which determines what ``correct'' steering looks like---the orchestrator shapes the reward landscape. Including diverse concepts in $\mathcal{D}_{\mathrm{steer}}$ encourages generalisation; including adversarial examples encourages robustness.
+
+\paragraph{Information design.} The steering prompt $s$ is the information channel between the orchestrator's intent and the hypernetwork's action. The orchestrator designs the format of steering prompts (natural language descriptions, keywords, structured templates) to maximise the informativeness of the signal. The optional cross-attention mechanism---allowing the hypernetwork to attend to the LLM's hidden states---is a richer information channel that enables context-dependent steering.
+
+\paragraph{Action constraints.} The LoRA rank~$r$ constrains the hypernetwork's action space: it can only produce coefficient vectors in $\mathbb{R}^r$, limiting the weight updates to the span of the learned bases. This constraint is deliberate---it prevents the hypernetwork from making arbitrary modifications to the LLM, channelling its influence through a low-dimensional, structured intervention. The steering intensity factor $f$ provides an additional constraint: scaling the intervention ensures that the steered model remains ``close'' to the base model in parameter space.
+
+\paragraph{Communication protocol.} The architecture defines the communication structure between agents. The hypernetwork communicates with the LLM exclusively through weight modifications---there is no other channel. This constraint ensures that the steering is applied uniformly across all inputs (for a given concept), preventing the hypernetwork from selectively intervening on particular inputs in ways that might undermine the orchestrator's objectives.
+
+\subsection{The Alignment Tax in HyperSteer-Weight}
+\label{subsec:alignment-tax-hsw}
+
+By Proposition~\ref{prop:voluntary} (Chapter~\ref{ch:cooperative}), the mechanism is voluntarily participable if the designed equilibrium Pareto dominates the undesigned one. In the LLM steering context, this condition has a concrete interpretation: the alignment tax is non-positive if the steered model is \emph{at least as good as the unsteered model on the LLM's own objective} (next-token prediction) while also satisfying the orchestrator's steering goals.
+
+HyperSteer-Weight achieves this through the steering intensity factor: at $f=0$, the steered model \emph{is} the base model, so the alignment tax is exactly zero. As $f$ increases, the model is steered further from its base behaviour. The orchestrator's task is to find the $f$ that maximises steering effectiveness while keeping the alignment tax acceptable---a concrete instance of the orchestrator's optimisation problem~\eqref{eq:orchestrator-problem}.
+
+\section{Empirical Evaluation}
+\label{sec:empirical}
+
+\subsection{Experimental Setup}
+\label{subsec:exp-setup}
+
+HyperSteer-Weight was evaluated on two benchmarks. The primary evaluation used AxBench~\cite{wu2025}, the largest model-steering benchmark, which tests generalisation across thousands of concepts. The secondary evaluation used AlpacaEval~\cite{alpacaeval2024} to verify generalisation beyond AxBench to diverse instruction-following prompts.
+
+On AxBench, HyperSteer-Weight outperformed simple baselines such as DiffMean (contrastive activation addition) and vanilla SAE (sparse autoencoder) variants, demonstrating that hypernetwork-generated weight steering can match or exceed the performance of methods that require per-concept steering vector discovery. On AlpacaEval, HyperSteer-Weight showed generalisation to unseen instruction categories, validating the prompt-conditioned approach.
+
+These results support the main theoretical claim of this chapter: that a well-designed mechanism (the HyperSteer-Weight architecture) can channel individually rational behaviour (likelihood maximisation by the LLM, loss minimisation by the hypernetwork) toward a collectively beneficial outcome (steered, concept-appropriate text generation).
+
+\section{Discussion}
+\label{sec:ch8-discussion}
+
+\paragraph{From theory to architecture.} This chapter demonstrates that the theoretical framework of Chapters~\ref{ch:meta-mapg}--\ref{ch:cooperative} is not merely an abstract exercise but maps onto concrete architectural choices in LLM systems. The MoE team policy (Chapter~\ref{ch:team-pg}) provides the structural template: experts (LoRA bases) and routing (hypernetwork). The cooperative framework (Chapter~\ref{ch:cooperative}) provides the design principle: create a mechanism in which selfish agents produce aligned outcomes. HyperSteer-Weight instantiates both.
+
+\paragraph{The two isomorphisms.} Two structural correspondences anchor the chapter:
+\begin{enumerate}[label=(\roman*)]
+  \item \emph{HyperSteer-Weight $\cong$ MoE team policy} (Proposition~\ref{prop:hsw-moe}): the LoRA bases are experts, the hypernetwork is the router, the coefficient vector is the routing decision. This connects to the gradient decomposition of the Team PGT.
+  \item \emph{Training $\cong$ mechanism design} (Section~\ref{sec:hsw-as-mechanism}): the system designer is the orchestrator, the LLM and hypernetwork are selfish agents, the architecture and loss function are the mechanism. This connects to the MD--ML Isomorphism of Chapter~\ref{ch:cooperative}.
+\end{enumerate}
+
+\paragraph{Limitations.} The supervised training objective~\eqref{eq:steering-objective} is a special case of the general orchestrator's problem~\eqref{eq:orchestrator-problem}: it optimises a fixed loss rather than a dynamic meta-objective. A natural extension---explored theoretically in Chapter~\ref{ch:cooperative} but not yet implemented---is to train HyperSteer-Weight with a reinforcement learning objective, where the reward reflects human preferences (as in RLHF) rather than cross-entropy on a fixed dataset. This would make the system a full instance of the orchestrated game, with the meta-learning outer loop dynamically adjusting the mechanism.
+
+\paragraph{Connection to Chapter~\ref{ch:cooperative}.} The cooperative framework predicts that the orchestrator should design reward shaping, information channels, and constraints to align selfish agents' incentives with social welfare. In HyperSteer-Weight, this prediction is confirmed: the LoRA rank constraint (action constraint), the steering prompt format (information design), the training data (reward shaping), and the weight-only communication channel (protocol) jointly ensure that the hypernetwork's self-interested loss minimisation produces beneficial steering. The theoretical framework of Chapter~\ref{ch:cooperative} provides the \emph{why}; HyperSteer-Weight provides the \emph{how}.

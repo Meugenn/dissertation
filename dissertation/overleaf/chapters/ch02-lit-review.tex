@@ -1,0 +1,100 @@
+\chapter{Literature Review}
+\label{ch:lit-review}
+
+This chapter surveys the key strands of prior work that this dissertation builds upon: single-agent policy gradient methods (\S\ref{sec:lit-pg}), their extension to multi-agent stochastic games (\S\ref{sec:lit-marl}), opponent-shaping algorithms (\S\ref{sec:lit-opponent}), and meta-learning approaches to multi-agent RL (\S\ref{sec:lit-meta}).
+
+
+%% ========================================================================
+\section{Policy Gradient Methods}
+\label{sec:lit-pg}
+%% ========================================================================
+
+Policy gradient methods optimise a parametric policy $\pi_\theta$ by ascending the gradient of the expected return. The foundational result is the \emph{Policy Gradient Theorem}~\cite{sutton1999policy}, which expresses $\nabla_\theta J(\theta)$ as an expectation under the agent's own stationary distribution, enabling estimation from sample trajectories. Williams's REINFORCE algorithm~\cite{williams1992} implements this via the log-derivative trick: $\hat{\nabla} J = R(\tau) \sum_t \nabla \log \pi_\theta(a_t | s_t)$.
+
+A major challenge is variance: the REINFORCE estimator is unbiased but has variance that scales with the episode length and inversely with the minimum action probability. Baseline subtraction~\cite{greensmith2004variance} and actor-critic methods~\cite{konda2000actor} reduce variance at the cost of introducing bias. Natural policy gradient methods~\cite{kakade2001natural} precondition the gradient by the Fisher information matrix, achieving faster convergence in practice.
+
+For single-agent MDPs, convergence of policy gradient methods is well understood. Agarwal et al.~\cite{agarwal2021theory} provide global convergence rates for softmax-parametrised policies in tabular MDPs. Mei et al.~\cite{mei2020global} establish global convergence of entropy-regularised policy gradient. These results rely crucially on the \emph{gradient domination} property, which links first-order stationarity to global optimality---a property that does not hold in multi-agent games.
+
+
+%% ========================================================================
+\section{Multi-Agent Reinforcement Learning in Stochastic Games}
+\label{sec:lit-marl}
+%% ========================================================================
+
+Stochastic games~\cite{shapley1953} generalise MDPs to multiple interacting agents. Each agent's reward depends on the joint action, and the state transitions depend on all agents' behaviour. The solution concept is the Nash equilibrium: a joint policy from which no agent can unilaterally improve.
+
+Learning Nash equilibria is fundamentally harder than single-agent optimisation. Daskalakis et al.~\cite{daskalakis2009complexity} showed that computing a Nash equilibrium is PPAD-complete even in normal-form games, and Hart and Mas-Colell~\cite{hart2003uncoupled} proved that uncoupled learning dynamics cannot converge to Nash equilibria in general games.
+
+Despite these negative results, convergence has been established in specific game classes. In two-player zero-sum games, optimistic gradient descent converges to Nash~\cite{daskalakis2018training}. In potential games, policy gradient converges because the game admits a common objective~\cite{leonardos2022global}. Cen et al.~\cite{cen2021fast} prove fast convergence of independent natural policy gradient in Markov potential games.
+
+The breakthrough of Giannou et al.~\cite{giannou2022} extended convergence guarantees to \emph{general} stochastic games by focusing on \emph{equilibrium policies} rather than game classes. Their key insight is that Nash policies satisfying a second-order stationarity (SOS) condition are locally attracting under policy gradient dynamics. They establish:
+\begin{enumerate}
+    \item Asymptotic convergence to stable Nash policies (Theorem~1),
+    \item An $\mathcal{O}(1/\sqrt{n})$ convergence rate for SOS Nash policies under REINFORCE (Theorem~2),
+    \item Finite-time convergence to deterministic Nash policies via lazy projection (Theorem~3).
+\end{enumerate}
+Their framework accommodates three information models: full gradients, stochastic gradients, and REINFORCE estimates with unbounded variance. The present dissertation extends their framework with two modifications (evidence weighting and opponent shaping) that improve the convergence constant and basin of attraction respectively.
+
+
+%% ========================================================================
+\section{Opponent Shaping and Learning Awareness}
+\label{sec:lit-opponent}
+%% ========================================================================
+
+Standard multi-agent learning algorithms treat other agents as part of the environment, ignoring the fact that opponents are simultaneously learning. This ``independent learner'' assumption leads to non-stationarity: each agent faces a moving target as others adapt.
+
+Foerster et al.~\cite{foerster2018lola} introduced \emph{Learning with Opponent-Learning Awareness} (LOLA), which addresses this by having each agent differentiate through its opponents' anticipated gradient step. The LOLA gradient for agent $i$ adds an opponent-shaping term:
+\begin{equation*}
+    \nabla_{\theta_i}^{\text{LOLA}} J^i = \nabla_{\theta_i} J^i + \sum_{j \neq i} \frac{\partial J^i}{\partial \theta_j} \cdot \frac{\partial \theta_j'}{\partial \theta_i},
+\end{equation*}
+where $\theta_j' = \theta_j + \alpha \nabla_{\theta_j} J^j$ is agent $j$'s anticipated update. This requires computing second-order derivatives (the Hessian $\partial^2 J^j / \partial \theta_j \partial \theta_i$), making LOLA more expensive than standard PG but enabling emergent cooperation in settings like the Iterated Prisoner's Dilemma.
+
+Several extensions have been proposed. Letcher et al.~\cite{letcher2019} introduced Stable Opponent Shaping (SOS), which modifies LOLA to guarantee convergence to stable fixed points using a correction term. Willi et al.~\cite{willi2022cola} proposed Consistent LOLA (COLA), addressing the inconsistency of standard LOLA when all agents simultaneously use opponent-shaping. Lu et al.~\cite{lu2022model} developed model-free variants that avoid explicit Hessian computation.
+
+Despite strong empirical results, convergence guarantees for LOLA-type methods have been limited to specific settings. Zhang et al.~\cite{zhang2010} proved convergence of gradient-based methods with opponent modelling in two-player zero-sum games. The present work provides, to our knowledge, the first convergence guarantee for LOLA in general stochastic games, by showing that opponent shaping can be absorbed as additional bias in the Giannou et al.\ framework.
+
+
+%% ========================================================================
+\section{Meta-Learning in Multi-Agent Systems}
+\label{sec:lit-meta}
+%% ========================================================================
+
+Meta-learning---learning to learn---provides another perspective on multi-agent adaptation. Rather than treating the learning process as fixed, meta-learning optimises the learning algorithm itself to perform well across a distribution of tasks.
+
+Al-Shedivat et al.~\cite{alshedivat2018} framed multi-agent interaction as a meta-learning problem, where each agent must adapt to the changing strategies of others. Kim et al.~\cite{kim2021policy} formalised this as the \emph{Meta-MAPG} (Meta-Learning Multi-Agent Policy Gradient) framework, deriving a three-term gradient decomposition:
+\begin{enumerate}
+    \item The \emph{direct gradient}: standard policy gradient as if opponents were stationary.
+    \item The \emph{own-learning term}: the effect of the agent's own future updates on long-run performance.
+    \item The \emph{peer-learning term}: the effect of opponents' anticipated updates.
+\end{enumerate}
+LOLA is recovered as a first-order approximation using terms 1 and 3 (dropping term 2). The Meta-MAPG framework is presented in Chapter~\ref{ch:meta-mapg} and provides the gradient decomposition that motivates our opponent-shaping analysis.
+
+In the broader meta-learning literature, MAML~\cite{finn2017} optimises for fast adaptation via a bilevel optimisation, and Xu et al.~\cite{xu2018meta} extended meta-policy gradient to multi-task RL. These approaches share the key idea with LOLA: differentiating through the inner learning loop to optimise the outer objective.
+
+
+%% ========================================================================
+\section{Positioning of This Work}
+\label{sec:lit-positioning}
+%% ========================================================================
+
+This dissertation sits at the intersection of three lines of research:
+
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lll}
+\hline
+\textbf{Prior work} & \textbf{Contribution} & \textbf{Limitation} \\
+\hline
+Giannou et al.~\cite{giannou2022} & PG converges to Nash in general games & Homogeneous agents, no opponent modelling \\
+Foerster et al.~\cite{foerster2018lola} & Opponent shaping improves empirical outcomes & No convergence guarantees in general games \\
+Kim et al.~\cite{kim2021policy} & Meta-MAPG gradient decomposition & No convergence analysis \\
+\hline
+\end{tabular}
+\end{center}
+
+Our contributions fill the gaps:
+\begin{itemize}
+    \item \textbf{Evidence-weighted PG} extends Giannou et al.\ to heterogeneous agents, proving a variance improvement via the AM-HM inequality.
+    \item \textbf{Opponent-shaping PG} provides the first convergence guarantee for LOLA-type methods in general stochastic games, by embedding opponent shaping within the Giannou et al.\ Lyapunov analysis.
+    \item The two modifications are \emph{orthogonal} (variance vs.\ contraction) and compose in a combined algorithm.
+\end{itemize}

@@ -1,0 +1,540 @@
+% by Bernhard von Stengel 11 February 2021
+% First we set up the style for the dissertation. Do not change this!
+\documentclass[a4paper,oneside,11pt]{report}
+
+% Now we load the preamble, which sets up most we need for the dissertation.
+\input{template-preamble}
+
+% Bernhard von Stengel 11 Feb 2021: try these fonts (the first is Times,
+% needs less space, the second Palatino)
+% \usepackage{newtxtext,newtxmath}
+\usepackage{newpxtext,newpxmath}
+\usepackage{inconsolata} % a nice fixed-width font for programming, \texttt
+\usepackage{roboto} % a nice sans serif font
+\usepackage{microtype}
+
+% --- ADDED BY GEMINI ---
+\usepackage{float}
+\usepackage{booktabs}
+
+% Math operators for new chapters
+\DeclareMathOperator{\proj}{proj}
+\providecommand{\E}{\mathbb{E}}
+\providecommand{\R}{\mathbb{R}}
+% -----------------------
+
+% The next lines set the title and candidate number. Fill in your own!
+\dissertationtitle{The $\Omega$-Gradient: Evidence-Weighted Multi-Agent\\
+  Policy Optimisation in Stochastic Games}
+
+\candnumber{007}
+
+% vertical skip between paragraphs. Do not use manual skips
+% in the document, only central parameters like this!
+\parskip1ex
+
+% Now the document begins.
+\begin{document}
+
+% First the titlepage.
+
+\dissertationtitlepage
+
+% You are required to write a short summary.
+
+\begin{dissertationsummary}
+We study the convergence of policy gradient methods to Nash equilibria in multi-agent stochastic games, building on the framework of Giannou, Lotidis, Mertikopoulos, and Vlatakis-Gkaragkounis (2022). We introduce four orthogonal modifications that provably improve convergence: (1)~an \emph{evidence-weighted} variant where agents scale gradient updates by a Keynesian evidence weight, reducing the effective variance by a factor of $\mathrm{HM}(V)/\mathrm{AM}(V) \leq 1$; (2)~an \emph{opponent-shaping} variant incorporating Foerster et al.'s LOLA mechanism, which enlarges the basin of attraction under a spectral reinforcement condition; (3)~a \emph{cooperative communication} mechanism enabling coalition formation through lossy policy transmission, with quality bounded by agents' self-knowledge (the $\mathcal{O} \to \Pi$ inference gap); and (4)~\emph{sparse policy regularisation} exploiting the blessing of dimensionality to achieve $O(k \log d)$ sample complexity in $d$-dimensional action spaces with $k$-sparse optima. All four mechanisms compose into a single update rule --- the $\Omega$-gradient --- with provable convergence. We provide Lean~4 formalisations and validate all predictions on matrix games, with applications to federated learning, RLHF alignment, and multi-agent debate.
+\end{dissertationsummary}
+
+% Next we set up the table of contents page. This will update
+% automagically, so you do not need to change anything. You may need to run
+% pdflatex two or three times before it all updates correctly though.
+
+\dissertationtableofcontents
+
+% Finally, we can get started 
+
+\input{chapters/ch01-introduction}
+
+\input{chapters/ch02-framework}
+
+\chapter{Policy Methods in Reinforcement Learning}
+\label{ch:policy-methods}
+
+This chapter introduces the mathematical framework of reinforcement learning that underpins the rest of the dissertation. We begin with the Markov Decision Process, which formalises how an agent interacts with an uncertain environment, and then develop the key objects---policies, value functions, and returns---needed to state optimality conditions. In the second half of the chapter we turn to \emph{policy gradient methods}, a family of algorithms that directly parametrise and optimise the agent's policy. The material in this chapter follows \cite{sutton2018rl}, primarily Chapters~3 and~13; all notation introduced here will be extended to the multi-agent setting in later chapters.
+
+\section{Markov Decision Processes}
+\label{sec:mdp}
+
+A \emph{Markov Decision Process} (MDP) provides a principled abstraction for sequential decision-making under uncertainty. An MDP is a tuple
+\begin{equation}\label{eq:mdp-tuple}
+  M = \langle \mathcal{S},\, \mathcal{A},\, \mathcal{P},\, \mathcal{R},\, \gamma \rangle,
+\end{equation}
+where the components are defined as follows.
+
+\begin{definition}[MDP components]\label{def:mdp}
+
+\begin{enumerate}[label=(\roman*)]
+  \item $\mathcal{S}$ is a finite set of \emph{states}.
+  \item $\mathcal{A}$ is a finite set of \emph{actions} available to an agent.\footnote{More generally one may allow state-dependent action sets $\mathcal{A}(s)$; we use a single set for notational simplicity.}
+  \item $\mathcal{P}\colon \mathcal{S}\times\mathcal{A}\times\mathcal{S} \to [0,1]$ is the \emph{transition function}, where $\mathcal{P}(s'\mid s,a) = \Pr\{S_{t+1}=s' \mid S_t=s,\,A_t=a\}$.
+  \item $\mathcal{R}\colon \mathcal{S}\times\mathcal{A}\times\mathcal{S} \to \mathbb{R}$ is the \emph{reward function}; the agent receives $r_{t+1} = \mathcal{R}(s_t,a_t,s_{t+1})$ upon transitioning from $s_t$ to~$s_{t+1}$ via action~$a_t$.
+  \item $\gamma \in [0,1)$ is the \emph{discount factor}, which controls the trade-off between immediate and future rewards.
+\end{enumerate}
+\end{definition}
+
+The defining property of an MDP is the \emph{Markov property}: the distribution over future states depends on the past only through the current state. Formally,
+\begin{equation}\label{eq:markov-property}
+  \Pr\{S_{t+1}=s',\, R_{t+1}=r \mid S_t,\,A_t\} = \Pr\{S_{t+1}=s',\, R_{t+1}=r \mid S_0,A_0,R_1,\ldots,S_t,A_t\}.
+\end{equation}
+This memoryless structure is what makes the MDP framework tractable: the agent need not maintain a record of its entire history in order to act optimally.
+
+\section{Policies}
+\label{sec:policies}
+
+A \emph{policy} $\pi$ specifies how the agent selects actions. In the most general (stochastic) case, a policy is a mapping from states to probability distributions over actions:
+\begin{equation}\label{eq:policy-def}
+  \pi(a\mid s) = \Pr\{A_t = a \mid S_t = s\}, \qquad a \in \mathcal{A},\; s \in \mathcal{S}.
+\end{equation}
+A policy is said to be \emph{deterministic} if, for every state~$s$, the distribution $\pi(\cdot\mid s)$ places all its mass on a single action. In the policy gradient framework developed in Section~\ref{sec:policy-gradient-methods}, we will consider parametrised stochastic policies $\pi(a\mid s, \bm{\theta})$ where $\bm{\theta}\in\mathbb{R}^d$ is a vector of learnable parameters.
+
+\section{Returns and Value Functions}
+\label{sec:returns-values}
+
+The agent's objective is to maximise cumulative reward. The \emph{discounted return} from time step~$t$ is defined as
+\begin{equation}\label{eq:return}
+  G_t = \sum_{k=0}^{\infty} \gamma^k\, R_{t+k+1}\,.
+\end{equation}
+When the interaction naturally terminates after a finite number of steps (the \emph{episodic} case), the sum is finite and runs up to the terminal time step~$T$; in the \emph{continuing} case the discount factor $\gamma<1$ ensures convergence.
+
+The expected return from a given state, under a fixed policy, is captured by the \emph{state-value function}:
+\begin{equation}\label{eq:state-value}
+  v_\pi(s) = \mathbb{E}_\pi\!\left[ G_t \mid S_t = s \right] = \mathbb{E}_\pi\!\left[ \sum_{k=0}^{\infty} \gamma^k\, R_{t+k+1} \;\middle|\; S_t = s \right].
+\end{equation}
+The subscript~$\pi$ on the expectation indicates that actions are chosen according to~$\pi$. If we additionally condition on the first action taken, we obtain the \emph{action-value function} (or \emph{Q-function}):
+\begin{equation}\label{eq:action-value}
+  q_\pi(s,a) = \mathbb{E}_\pi\!\left[ G_t \mid S_t = s,\, A_t = a \right].
+\end{equation}
+
+The two value functions are related by a simple marginalisation over the policy:
+\begin{equation}\label{eq:v-from-q}
+  v_\pi(s) = \sum_{a\in\mathcal{A}} \pi(a\mid s)\, q_\pi(s,a).
+\end{equation}
+This identity will reappear repeatedly when we compute policy gradients, both in the single-agent setting and in the multi-agent extensions of later chapters.
+
+\subsection{The Bellman Equations}
+\label{subsec:bellman}
+
+The value functions satisfy recursive relationships known as the \emph{Bellman equations}. For the state-value function,
+\begin{equation}\label{eq:bellman-v}
+  v_\pi(s) = \sum_{a\in\mathcal{A}} \pi(a\mid s) \sum_{s'\in\mathcal{S}} \mathcal{P}(s'\mid s,a) \bigl[\mathcal{R}(s,a,s') + \gamma\, v_\pi(s')\bigr],
+\end{equation}
+and for the action-value function,
+\begin{equation}\label{eq:bellman-q}
+  q_\pi(s,a) = \sum_{s'\in\mathcal{S}} \mathcal{P}(s'\mid s,a) \bigl[\mathcal{R}(s,a,s') + \gamma \sum_{a'\in\mathcal{A}} \pi(a'\mid s')\, q_\pi(s',a')\bigr].
+\end{equation}
+
+These equations express a consistency condition: the value of a state must equal the immediate reward plus the discounted value of successor states, averaged over the randomness in the policy and the environment. They form the basis of many solution methods in reinforcement learning, including dynamic programming, temporal-difference learning, and Monte Carlo estimation~\cite{sutton2018rl}.
+
+\subsection{Optimal Policies and Optimal Value Functions}
+\label{subsec:optimal}
+
+A policy $\pi^*$ is \emph{optimal} if $v_{\pi^*}(s) \ge v_\pi(s)$ for all $s\in\mathcal{S}$ and all policies~$\pi$. The corresponding \emph{optimal value functions} are
+\begin{equation}\label{eq:optimal-v-q}
+  v_*(s) = \max_\pi v_\pi(s), \qquad q_*(s,a) = \max_\pi q_\pi(s,a).
+\end{equation}
+The optimal value functions satisfy the \emph{Bellman optimality equations}, obtained by replacing the average over the policy in \eqref{eq:bellman-v}--\eqref{eq:bellman-q} with a maximum over actions. A fundamental result of MDP theory guarantees that at least one deterministic optimal policy always exists for finite MDPs~\cite{sutton2018rl}.
+
+While value-based methods (such as Q-learning) seek the optimal value function and derive a policy from it, the policy gradient approach takes a different route: it parametrises the policy directly and optimises it via gradient ascent. We develop this idea next.
+
+\section{Policy Gradient Methods}
+\label{sec:policy-gradient-methods}
+
+In many problems of interest---particularly those with large or continuous state spaces, or where the optimal policy is naturally stochastic---it is advantageous to parametrise the policy directly. We write
+\begin{equation}\label{eq:parametrised-policy}
+  \pi(a \mid s,\, \bm{\theta}) = \Pr\{A_t = a \mid S_t = s,\, \bm{\theta}_t = \bm{\theta}\},
+\end{equation}
+where $\bm{\theta}\in\mathbb{R}^d$ is a parameter vector. The goal is to find parameters that maximise a scalar \emph{performance measure} $J(\bm{\theta})$. The agent updates its parameters by approximate gradient ascent:
+\begin{equation}\label{eq:gradient-ascent}
+  \bm{\theta}_{t+1} = \bm{\theta}_t + \alpha\,\widehat{\nabla J(\bm{\theta}_t)},
+\end{equation}
+where $\alpha>0$ is a step size and $\widehat{\nabla J(\bm{\theta}_t)}$ is a stochastic estimate of the gradient $\nabla_{\bm{\theta}} J(\bm{\theta})$.
+
+\subsection{Advantages of the Policy Gradient Approach}
+\label{subsec:pg-advantages}
+
+Several properties make policy gradient methods attractive compared to value-based alternatives.
+
+First, a parametrised policy can smoothly interpolate between stochastic and near-deterministic behaviour. As the parameters evolve, the action probabilities change \emph{continuously}, in contrast to value-based methods with $\varepsilon$-greedy action selection, where small changes in estimated values can cause abrupt switches in the selected action. This continuity is precisely what enables gradient-based optimisation and provides stronger convergence guarantees.
+
+Second, in problems where the optimal policy is inherently stochastic (for instance, in partially observable environments or in game-theoretic settings), policy gradient methods can represent and learn such policies directly, whereas value-based methods with greedy action selection cannot.
+
+Third, policy parametrisation offers a natural mechanism for injecting domain knowledge or structural priors. For example, one can constrain the policy to lie in a particular function class (e.g.\ a neural network with a specific architecture) that reflects prior beliefs about the structure of good policies.
+
+These advantages come at a cost: policy gradient estimates are typically of higher variance than value-based updates, and careful variance reduction techniques (such as baselines and actor-critic methods) are often necessary in practice.
+
+\subsection{The Performance Measure}
+\label{subsec:performance-measure}
+
+In the \emph{episodic} setting, a natural performance measure is the expected return from a designated start state~$s_0$:
+\begin{equation}\label{eq:performance-episodic}
+  J(\bm{\theta}) = v_{\pi_{\bm{\theta}}}(s_0) = \mathbb{E}_{\pi_{\bm{\theta}}}\!\left[G_0 \mid S_0 = s_0\right].
+\end{equation}
+More generally, if episodes can start from different states according to some distribution, one defines $J(\bm{\theta}) = \sum_s d_0(s)\, v_{\pi_{\bm{\theta}}}(s)$, where $d_0$ is the initial state distribution.
+
+In the \emph{continuing} setting, one instead uses the average reward: $J(\bm{\theta}) = \lim_{T\to\infty}\frac{1}{T}\sum_{t=0}^{T-1} \mathbb{E}[R_{t+1}\mid \pi_{\bm{\theta}}]$. The results we present below apply to both settings with minor notational adjustments; we focus on the episodic case, as it is the setting used in \cite{kim2021policygradientalgorithmlearning} and in the cooperative steering game of later chapters.
+
+\subsection{The On-Policy Distribution}
+\label{subsec:on-policy-dist}
+
+A key quantity in the theory of policy gradients is the \emph{on-policy state distribution} (or \emph{stationary distribution}) under policy~$\pi$, denoted $\mu_\pi(s)$. Informally, $\mu_\pi(s)$ measures how much time the agent spends in state~$s$ when following~$\pi$.
+
+In the episodic case, let $\eta(s)$ denote the expected number of (discounted) visits to state~$s$ per episode:
+\begin{equation}\label{eq:eta}
+  \eta(s) = \sum_{t=0}^{\infty} \gamma^t\, \Pr\{S_t = s \mid S_0 = s_0,\, \pi\}.
+\end{equation}
+The on-policy distribution is then defined as the normalised version:
+\begin{equation}\label{eq:mu-pi}
+  \mu_\pi(s) = \frac{\eta(s)}{\sum_{s'}\eta(s')}\,.
+\end{equation}
+This distribution plays a crucial role in the Policy Gradient Theorem, as it determines which states contribute most to the gradient of the performance measure. Importantly, $\mu_\pi$ depends on the policy $\pi_{\bm{\theta}}$, and hence on the parameters~$\bm{\theta}$.
+
+\section{The Policy Gradient Theorem}
+\label{sec:pgt}
+
+The central theoretical result for policy gradient methods is the \emph{Policy Gradient Theorem}, which provides an exact expression for $\nabla_{\bm{\theta}} J(\bm{\theta})$ that, remarkably, does not require differentiating the state distribution~$\mu_\pi$.
+
+\begin{theorem}[Policy Gradient Theorem {\cite[Ch.~13]{sutton2018rl}}]
+\label{thm:pgt}
+For any differentiable parametrised policy $\pi(a\mid s,\bm{\theta})$, the gradient of the performance measure satisfies
+\begin{equation}\label{eq:pgt}
+  \nabla_{\bm{\theta}} J(\bm{\theta}) \propto \sum_{s\in\mathcal{S}} \mu_\pi(s) \sum_{a\in\mathcal{A}} q_\pi(s,a)\, \nabla_{\bm{\theta}}\,\pi(a\mid s,\bm{\theta}),
+\end{equation}
+where $\mu_\pi$ is the on-policy distribution \eqref{eq:mu-pi} and $q_\pi$ is the action-value function \eqref{eq:action-value}.
+\end{theorem}
+
+The significance of this result cannot be overstated. Naively, computing $\nabla J$ would require differentiating $\mu_\pi(s)$ with respect to~$\bm{\theta}$, since the state distribution itself depends on the policy. This derivative is extremely difficult to compute in practice, as it involves the long-run dynamics of the Markov chain induced by the policy. The Policy Gradient Theorem shows that $\nabla J$ can nonetheless be written as an expectation involving only $q_\pi$ and $\nabla_{\bm{\theta}}\pi$---both of which are far more accessible.
+
+We present the full proof of Theorem~\ref{thm:pgt} in the next chapter, where we work through the derivation in detail and discuss the assumptions involved. The multi-agent generalisation of this result, due to \cite{kim2021policygradientalgorithmlearning}, is the subject of Chapter~6.
+
+\subsection{The Score Function and the REINFORCE Estimator}
+\label{subsec:reinforce}
+
+A standard identity from probability theory, often called the \emph{log-derivative trick} or \emph{score function trick}, allows us to rewrite the gradient as an expectation suitable for Monte Carlo estimation. For any positive $\pi(a\mid s,\bm{\theta})$,
+\begin{equation}\label{eq:log-trick}
+  \nabla_{\bm{\theta}}\,\pi(a\mid s,\bm{\theta}) = \pi(a\mid s,\bm{\theta})\, \nabla_{\bm{\theta}}\,\ln\pi(a\mid s,\bm{\theta}).
+\end{equation}
+Substituting \eqref{eq:log-trick} into \eqref{eq:pgt} yields
+\begin{equation}\label{eq:pgt-expectation}
+  \nabla_{\bm{\theta}} J(\bm{\theta}) \propto \mathbb{E}_{s\sim\mu_\pi,\, a\sim\pi} \bigl[ q_\pi(s,a)\, \nabla_{\bm{\theta}}\,\ln\pi(a\mid s,\bm{\theta}) \bigr].
+\end{equation}
+
+This expectation can be estimated from sample trajectories, leading to the \textsc{reinforce} algorithm~\cite{sutton2018rl}. Given a trajectory $\tau = (s_0, a_0, r_1, s_1, a_1, r_2, \ldots)$ sampled under the current policy, the update at each time step~$t$ is
+\begin{equation}\label{eq:reinforce-update}
+  \bm{\theta}_{t+1} = \bm{\theta}_t + \alpha\, G_t\, \nabla_{\bm{\theta}}\, \ln\pi(a_t\mid s_t,\bm{\theta}_t),
+\end{equation}
+where $G_t$ is the observed return from time~$t$. This replaces the unknown $q_\pi(s_t,a_t)$ with the sample return~$G_t$, which is an unbiased estimate.
+
+\subsection{Baselines and Variance Reduction}
+\label{subsec:baselines}
+
+While the \textsc{reinforce} estimator is unbiased, it can have very high variance, making learning slow. A standard technique is to subtract a \emph{baseline} $b(s)$ from the return:
+\begin{equation}\label{eq:baseline}
+  \bm{\theta}_{t+1} = \bm{\theta}_t + \alpha\, \bigl(G_t - b(s_t)\bigr)\, \nabla_{\bm{\theta}}\,\ln\pi(a_t\mid s_t,\bm{\theta}_t).
+\end{equation}
+Crucially, the baseline does not introduce bias into the gradient estimate, provided $b(s)$ does not depend on the action. This follows from the fact that $\sum_a \nabla_{\bm{\theta}}\pi(a\mid s,\bm{\theta}) = \nabla_{\bm{\theta}} 1 = 0$, so $\mathbb{E}_{a\sim\pi}[b(s)\,\nabla_{\bm{\theta}}\ln\pi(a\mid s,\bm{\theta})] = 0$.
+
+A natural choice of baseline is an estimate of the state-value function $\hat{v}(s,\bm{w})$, parametrised by a separate weight vector $\bm{w}\in\mathbb{R}^m$. This leads to \emph{actor-critic} methods, in which the ``actor'' (the policy $\pi_{\bm{\theta}}$) and the ``critic'' (the value estimate $\hat{v}_{\bm{w}}$) are updated simultaneously.
+
+\subsection{Actor-Critic Methods}
+\label{subsec:actor-critic}
+
+In an actor-critic architecture, the update to the policy parameters takes the form
+\begin{equation}\label{eq:actor-critic-update}
+  \bm{\theta}_{t+1} = \bm{\theta}_t + \alpha\, \delta_t\, \nabla_{\bm{\theta}}\,\ln\pi(a_t\mid s_t,\bm{\theta}_t),
+\end{equation}
+where $\delta_t = r_{t+1} + \gamma\,\hat{v}(s_{t+1},\bm{w}) - \hat{v}(s_t,\bm{w})$ is the \emph{temporal-difference (TD) error}. The TD error serves as a one-step estimate of the \emph{advantage function} $A_\pi(s,a) = q_\pi(s,a) - v_\pi(s)$, which measures how much better action~$a$ is compared to the average behaviour under~$\pi$ in state~$s$.
+
+The critic parameters~$\bm{w}$ are updated to minimise the mean squared error of the value estimate, typically via semi-gradient TD:
+\begin{equation}\label{eq:critic-update}
+  \bm{w}_{t+1} = \bm{w}_t + \beta\, \delta_t\, \nabla_{\bm{w}}\,\hat{v}(s_t,\bm{w}_t),
+\end{equation}
+where $\beta>0$ is a separate step size.
+
+Actor-critic methods combine the strengths of both policy gradient and value-based approaches: the policy parametrisation provides the representational flexibility discussed in Section~\ref{subsec:pg-advantages}, while the learned value function reduces the variance of the gradient estimates. This combination is essential in practice, and forms the backbone of many modern reinforcement learning algorithms.
+
+\section{Trajectories and Episodes}
+\label{sec:trajectories}
+
+Before proceeding to the proof of the Policy Gradient Theorem, we formalise the concept of a \emph{trajectory}, which will be central to the multi-agent setting of later chapters. A trajectory (or \emph{episode}) is a complete sequence of states, actions, and rewards generated by an agent interacting with the environment under some policy~$\pi$:
+\begin{equation}\label{eq:trajectory}
+  \tau = (s_0,\, a_0,\, r_1,\, s_1,\, a_1,\, r_2,\, \ldots,\, s_{H-1},\, a_{H-1},\, r_H),
+\end{equation}
+where $H$ is the \emph{episode horizon}. The probability of a trajectory under policy~$\pi$ and transition dynamics~$\mathcal{P}$ factorises as
+\begin{equation}\label{eq:trajectory-prob}
+  p(\tau \mid \pi) = d_0(s_0)\,\prod_{t=0}^{H-1} \pi(a_t\mid s_t)\,\mathcal{P}(s_{t+1}\mid s_t,a_t),
+\end{equation}
+where $d_0$ is the initial state distribution. The discounted return along a trajectory is $G(\tau) = \sum_{t=0}^{H-1}\gamma^t r_{t+1}$, and the performance measure can be written as $J(\bm{\theta}) = \mathbb{E}_{\tau\sim p(\cdot\mid\pi_{\bm{\theta}})}[G(\tau)]$.
+
+This trajectory-level perspective is particularly natural in the multi-agent setting of \cite{kim2021policygradientalgorithmlearning}, where each agent collects $K$~trajectories before updating its policy, and the meta-learning objective is defined over sequences of such trajectory batches.
+
+\section{Discussion}
+\label{sec:ch3-discussion}
+
+The framework developed in this chapter---MDPs, parametrised policies, value functions, and the Policy Gradient Theorem---provides the single-agent foundation on which the rest of this dissertation builds. In the next chapter we present the full proof of the Policy Gradient Theorem. The chapters that follow extend the setting to multiple interacting agents, each with its own policy and reward, and derive the Meta-Multi-Agent Policy Gradient theorem of \cite{kim2021policygradientalgorithmlearning}, which generalises Theorem~\ref{thm:pgt} to account for the fact that each agent's policy update affects the learning dynamics of all other agents. The practical application of these ideas to Large Language Model steering is developed in later chapters, where the frozen LLM and its hypernetwork are modelled as two cooperative agents in the sense formalised here.
+
+\input{chapters/ch04-pg-theorem-proof}
+
+\input{chapters/ch05-meta-learning-marl}
+
+\input{chapters/ch06-meta-mapg-theorem}
+
+\input{chapters/ch03-convergence}
+
+\input{chapters/ch08-llm-steering}
+
+\input{chapters/ch09-cooperative-game}
+
+\input{chapters/ch10-cooperative-communication}
+
+\input{chapters/ch12-blessing-dimensionality}
+
+\input{chapters/ch13-applications}
+
+\input{chapters/ch04-simulations}
+
+\input{chapters/ch11-conclusion}
+
+% \chapter{Multi Agents Mathematical Setup}
+
+% \chapter{Gradient Policy Theorem}
+% \chapter{Validating the assumptions}
+% \section{Reading \cite{sutton2018rl}   } 
+% \subsection{Ch.3}
+
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{sutton3.png}
+%     \caption{curious - simple approach from the econ point of view, but easily modifiable}
+%     \label{fig:placeholder1}
+% \end{figure}
+
+% Episodic - where there is a natural stopping point
+% Continuing tasks - $T = \infty$
+
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{sutton3-2.png}
+%     \caption{Enter Caption}
+%     \label{fig:placeholder2}
+% \end{figure}
+
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{sutton 3-3.png}
+%     \caption{Enter Caption}
+%     \label{fig:placeholder3}
+% \end{figure}
+
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{sutton 3-4}
+%     \caption{Enter Caption}
+%     \label{fig:placeholder4}
+% \end{figure}
+
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{sutton 3-5}
+%     \caption{Enter Caption}
+%     \label{fig:placeholder5}
+% \end{figure}
+
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{sutton3-6}
+%     \caption{important notation - to define in my thesis}
+%     \label{fig:placeholder6}
+% \end{figure}
+
+
+% \newpage
+% \subsection{Ch. 13 - Gradient Policy Methods}
+% Gradient Policy methods - as opposed to the standard methods that learn action value estimates, we are learning a parametrized policy $\pi (a |s, \bm \theta) = \Pr \{A_t = a | S_t = s, \bm \theta _t = \bm \theta\}$ that gives us a probability distribution of actions given the state. \textit{I think Neural Nets fall under this category since this is precisely what we learn} If in addition we learn a value function $\hat v(s, \bf {w} )$ $\bf w$, then we call this an actor - critic method. Goal - maximise a performance measure $J(\bm \theta)$. Update is $\bm \theta_{t+1} = \bm \theta_t + \alpha \widehat{\nabla J(\bm \theta_t)}$
+
+% \textbf{Policy requirements}
+% \begin{itemize}
+%     \item $\pi$ differentiable
+%     \item In practice, $\pi$ never deterministic
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{image.png}
+%     \caption{This seems v similar to normal neural nets}
+%     \label{fig:placeholder7}
+% \end{figure}
+% \end{itemize}
+% One advantage is that allows you to approach a deterministic policy, as opposed to the $\epsilon$-greedy action selection that always has randomness. RL allows for a variety of underlying models for the prefernce
+% With significant function approximation, best approximate policy may be stochastic - policy method can approximate well, action value ones can't
+% Another advantage is that policy may be much easier to approximate. In other problems, action value may be easier to approximate
+% Last advantage - injecting a prior
+% \subsection{Policy Gradient Theorem}
+% Theoretical advantage - continuous policy parametrization change smoothly as a function of the learned parameter.; action probs can change dramatically. Thus stronger convergence guarantees. Continuity of policy allows approximate gradient ascent
+% Episodic and continuous cases differ but can be adjusted with similar notation. \textit{The paper is for the discrete case - maybe I can adjust for the continuous and simulate?} 
+% This theorem - direct case (as opposed to meta learning from the paper). I can do the review of meta learning advantage over normal.
+% Practically, why do we add discounting?
+% State distribution depends on the policy and is usually unknown. Estimate of performance - answered by PGT. \textbf{Doesn't involve derivative of the state distribution}
+% \[
+% \nabla J(\bm \theta) \propto \sum_s\mu(s) \sum_a q_\pi (s, a) \nabla_{\bm \theta} \pi(a|s, \bm \theta)
+% \]
+% \textit{What is the "episodic" case?}
+% What is q? Wait, what is $\mu$ and $\eta$ here as well?  Look exercise 3.16
+
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{image.png}
+%     \caption{}
+%     \label{fig:placeholder8}
+% \end{figure}
+% K, so go down to ch. 3 and read up.
+
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{image.png}
+%     % Note: You were missing a caption/label here, but [H] still works
+% \end{figure}
+
+
+% \chapter{\cite{kim2021policygradientalgorithmlearning} Reading notes}
+
+% \section{Questions}
+% \section{To-do s}
+% $\square$ Introduce Q in the proof
+% \section{Notes}
+% \begin{itemize}
+%     \item Give overview as policy gradient space (\cite{wei2018multiagentsoftqlearning}) -> meta policy gradients 
+%     \item I bet a good section on the basic setup of reinforcement learning 
+% \end{itemize}
+% \section{Random notes}
+% Equilibrium learning - agents learning policies to satisfy game-theoretic equilibrium conditions. Most are based on off-policy q learning
+% Inner loop - adapting policy based on parameters - i.e. gradient update
+% \section{Mathematical setup}
+
+% n-agent game is a tuple 
+% $\mI$
+% $M_n = \langle \mI, \mS, \mA, \mP, \mR, \gamma \rangle$ where $I$ - n agents,
+% $\mA = \times_{i\in \mI} \mA_i$ - set of action spaces for each agent (at each stage?) 
+
+% $\gamma$ is the discount factor
+
+% $\mS$ is game dependent and can be, for example, set of all past actions on a game. In general, it describes the state of the game at the current step (what happened before and is now)
+
+% Reward function of the agent $r_t^i = \mathcal{R}^i (s_t, \bm a_t)$ depends on the current state of the game and actions of all agents at a current step. At the end of an \textbf{episode} (what is it?) agent collects a trajectory - the path of all actions, states and rewards, and parameters of all policies
+
+% $\phi_i$ - parametrization of the policy of agent
+
+% $G^i(\tau_{\phi_0}) = \sum_{t=0}^{H} \gamma^t r_t^i$ is  simply discounted return
+
+% $\tau_\phi:= (s_0, \bm a_0, \bm r-0, \dots, \bm r_H)$
+% Definition from 
+
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.75\linewidth]{wen2019.jpg}
+%     \caption{\cite{wen2019probabilisticrecursivereasoningmultiagent}}
+%     \label{fig:placeholder9}
+% \end{figure}
+% \section{Markovian chain}
+% Each agent updates its policy via \textbf{Markovian update function} after every $\bm K$ trajectories. After the initial time period, update policy to maximise value function - \textit{expected, discounted future reward given} $s_0$
+
+% In this paper, you have
+% \begin{enumerate}
+%     \item sequential dependency of policies ($\phi_1$ depends on $\phi_0$, and so on
+%     \item You can control non-stationarity by adjusting $H$ - episode horizon and $K$ - number of trajectories collected
+% \end{enumerate} 
+
+% \section{Meta Learning}
+% In classical RL, the value function uses evaluates future reward given the current policy of the agent, providing $V_{\phi_i}$. In contrast, the meta-value function evaluates reward given current policy and \textbf{future updates that will stem from the current policy}. It explicitly models the learning process (update of parameters) itself
+% What is special about meta learning is that the
+
+
+% \section{Proof}
+
+% The proof depends crucially on \cite{wei2018multiagentsoftqlearning} that introduces softmax Q-learning used in 
+% the proof 
+
+% Assumption: 
+% - Conditional independence
+
+% Intrdocues $Q_{\phi_{l+1}}$ - what is Q. What is state - action value?
+
+% Steps of the proof:
+% \begin{enumerate}
+%     \item Introduce Q - state action value
+%     \begin{enumerate}
+%         \item Use the assumption of the conditional independence between agents actions \cite{wen2019probabilisticrecursivereasoningmultiagent}, 
+%         \begin{equation}
+%         \pi(a^i, a^{-i} | s) = \pi(a^i|s) \pi(a^{-i}|s) \label{eq:wen_cond_ind}
+%         \end{equation}
+%         \item Crucial - what is Q func? Does it have to do with Q learning?
+%         \begin{enumerate}
+%             \item State-action Q function is a standard object in reinforcement learning (refer to \cite{sutton1998reinforcement}   - the details I can expand on here).
+%             \[
+%             Q_{\phi_{l+1}}^i(s_0, a_0) = \E_{p(\tau_{\phi_{l+1}|s_0, a_0, \phi_{l+1}})}\left[ G^i(\tau) \right] = \E_{p(\tau_{\phi_{l+1}|s_0, a_0, \phi_{l+1}})}\left[\sum_{t=0}^{H} \gamma^t r_t^i \right] 
+%             \]
+%                 Extra step (potentially give more details on why / what 
+%                 Note (possibly introduce more formal definition of the action space and parameters, like where $a_0$ lies)
+%                 \begin{align*}
+%                 V_{\phi_{l+1}}^i (s_0) &= \sum_{a \in \mA}\pi(\b a | s, \b \phi_0) Q_{\phi_{l+1}}^i (s_0, \b a_0) \\
+%                 &\stackrel{\eqref{eq:wen_cond_ind}}{=}  \sum_{a \in \mA}\pi( a_i | s, \b \phi_0)\pi(\b a_{-i} | s, \b \phi_0) Q_{\phi_{l+1}}^i (s_0, \b a_0) \\
+%                 &=\sum \sum
+%                 \end{align*}
+%                 \item The question is still to exactly connect Q and V via the definitions given in the paper (or in my own way!)
+             
+%             \item Different from standard Q learning
+%         \end{enumerate}
+%     \end{enumerate}
+%     \item Take gradient wrt to $\phi_0^{-i}$ of the inner term of the value fuction
+%     \begin{enumerate}
+%         \item Uses the inner loop - what is it?
+%         \item Inner loop optimization until 
+%     \end{enumerate}
+%     \item Use this to find which terms depend on $\phi_0^i$
+% \end{enumerate}
+
+
+% \chapter{Simulations}
+
+
+% \chapter{Conclusion}
+
+% The end
+
+% Time to add the bibliography
+% Bernhard von Stengel suggests Bibliography at the very end
+% \bibliographystyle{plain}
+% \bibliography{template-BibFile}
+
+% If you have one or more appendices, this is where they should go. 
+% The next command changes the normal \chapter{...} command.
+
+\appendix
+
+% So to get one or more appendices, you do this.
+
+\chapter{The first appendix}
+
+
+\bibliographystyle{book}
+\bibliography{myreferences}
+
+\end{document}

@@ -1,0 +1,55 @@
+\chapter{Introduction}
+\label{ch:introduction}
+
+\section{Motivation}
+
+Learning in multi-agent systems is fundamentally harder than single-agent optimisation. In a stochastic game, each agent's reward depends not only on its own actions but on the actions of all other agents, which are themselves changing as those agents learn. The convergence properties of popular learning algorithms---policy gradient methods in particular---remain poorly understood outside specific game classes such as zero-sum or potential games~\cite{giannou2022}.
+
+A recent breakthrough by Giannou, Lotidis, Mertikopoulos, and Vlatakis-Gkaragkounis~\cite{giannou2022} established local convergence of policy gradient methods to Nash equilibria in \emph{general} stochastic games, with explicit rates for second-order stationary policies. Their framework accommodates the high variance of REINFORCE-type gradient estimators, providing the first trajectory convergence guarantees at a rate of $\mathcal{O}(1/\sqrt{n})$.
+
+This dissertation asks: \emph{can we do better?} Specifically, can structural insights from the epistemology of multi-agent systems yield provable improvements to the convergence of policy gradient methods?
+
+\section{Contributions}
+
+We introduce two modifications to the standard policy gradient method and prove that each yields a measurable improvement over the baseline of~\cite{giannou2022}:
+
+\begin{enumerate}
+    \item \textbf{Evidence-weighted policy gradient (EWPG).} We propose that agents scale their gradient updates by a confidence measure $V_i$ reflecting the quality of their data. Under a variance model where $\sigma_i^2 \propto 1/V_i$, we show that the effective variance in the Lyapunov convergence analysis improves by a factor of
+    \[
+        \frac{\operatorname{HM}(V)}{\operatorname{AM}(V)} \leq 1,
+    \]
+    where $\operatorname{HM}$ and $\operatorname{AM}$ denote the harmonic and arithmetic means of the evidence weights. The rate exponent $\mathcal{O}(1/\sqrt{n})$ is preserved; the improvement is in the leading constant.
+
+    \item \textbf{Opponent-shaping policy gradient (LOLA-PG).} Building on Foerster et al.'s LOLA algorithm~\cite{foerster2018lola}, we incorporate an opponent-shaping term in which agent $i$ differentiates through agent $j$'s anticipated learning step. We prove that:
+    \begin{itemize}
+        \item With annealed opponent-shaping strength $\lambda_n \to 0$, all convergence guarantees of~\cite{giannou2022} are preserved.
+        \item Under a \emph{spectral reinforcement condition} on the opponent-shaping Hessian, the effective SOS parameter increases from $\mu$ to $\mu + \lambda\mu_H$, \emph{strictly enlarging} the basin of attraction.
+    \end{itemize}
+    This is, to our knowledge, the first convergence guarantee for LOLA-type methods in general stochastic games.
+\end{enumerate}
+
+The two improvements are orthogonal: evidence weighting reduces the variance prefactor, opponent shaping increases the contraction rate. A combined algorithm (EW-LOLA-PG) inherits both.
+
+\section{Key Ideas}
+
+Two intuitions motivate the proposed modifications:
+\begin{itemize}
+    \item \textbf{Heterogeneous information quality.} In many multi-agent settings, agents have access to data of varying quality. An agent with abundant, high-quality data should take larger gradient steps than one operating on noisy estimates. This motivates scaling gradient updates by a confidence measure reflecting evidence quality.
+    \item \textbf{Opponent-learning awareness.} Standard policy gradient methods treat other agents as part of a stationary environment, ignoring the fact that opponents are simultaneously learning. By differentiating through opponents' anticipated updates, agents can shape the learning dynamics to reach equilibria that independent learners cannot.
+\end{itemize}
+
+\section{Outline}
+
+\begin{itemize}
+    \item \textbf{Chapter~2} reviews the relevant literature on multi-agent RL, policy gradient methods, and opponent-shaping algorithms.
+    \item \textbf{Chapter~3} introduces Markov decision processes, value functions, and single-agent policy gradient methods.
+    \item \textbf{Chapter~4} proves the Policy Gradient Theorem in detail.
+    \item \textbf{Chapter~5} extends the framework to multi-agent stochastic games and meta-learning.
+    \item \textbf{Chapter~6} presents the Meta-MAPG gradient decomposition.
+    \item \textbf{Chapter~\ref{ch:convergence}} is the core contribution: the evidence-weighted PG, opponent-shaping PG, and combined convergence theorems.
+    \item \textbf{Chapters~8--9} discuss applications to LLM steering and cooperative games.
+    \item \textbf{Chapter~10} presents simulation experiments validating the theoretical results.
+    \item \textbf{Chapter~11} concludes.
+\end{itemize}
+
+Both theoretical results have been formalised in Lean~4 with Mathlib, available at \texttt{formalization/EvidenceWeightedPG.lean} and \texttt{formalization/OpponentShapingPG.lean}.

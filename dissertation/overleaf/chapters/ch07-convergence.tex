@@ -1,0 +1,336 @@
+\chapter{Convergence Guarantees for Multi-Agent Policy Gradient Methods}
+\label{ch:convergence}
+
+This chapter presents the two original theoretical contributions of the dissertation. Building on the convergence framework of Giannou et al.~\cite{giannou2022}, we introduce two modifications to the standard policy gradient method for multi-agent stochastic games and prove that each yields a provable improvement:
+\begin{enumerate}
+    \item \textbf{Evidence-weighted PG} (\S\ref{sec:ewpg}): agents scale their gradient updates by an evidence weight, reducing the effective variance by a factor of $\operatorname{HM}(V)/\operatorname{AM}(V) \leq 1$.
+    \item \textbf{Opponent-shaping PG} (\S\ref{sec:lola-convergence}): agents differentiate through their opponents' anticipated learning steps (LOLA), which, under a spectral condition, strictly enlarges the basin of attraction.
+\end{enumerate}
+These two mechanisms are orthogonal: the first improves the variance constant, the second increases the contraction rate. In \S\ref{sec:combined-convergence} we combine them into a single algorithm and show both improvements compose.
+
+
+
+%% ========================================================================
+\section{The Giannou et al.\ Framework}
+\label{sec:giannou-recap}
+%% ========================================================================
+
+We work in the general stochastic game setting of Giannou et al.~\cite{giannou2022}, as recalled in Chapter~\ref{ch:policy-methods} for the single-agent case and extended in Chapters~\ref{ch:meta-learning}--\ref{ch:meta-mapg} for multi-agent interactions.
+
+An $N$-player stochastic game $\mathcal{G} = (\mathcal{S}, \mathcal{N}, \{\mathcal{A}_i\}_{i \in \mathcal{N}}, P, \zeta, \rho)$ proceeds episodically. Each agent $i$ maintains a stationary Markovian policy $\pi_i : \mathcal{S} \to \Delta(\mathcal{A}_i)$ and updates it between episodes via the generic \emph{policy gradient} (PG) template:
+\begin{equation}
+\label{eq:pg-generic}
+\tag{PG}
+    \pi_{n+1} = \operatorname{proj}_\Pi(\pi_n + \gamma_n \hat{v}_n),
+\end{equation}
+where $\gamma_n > 0$ is the step size and $\hat{v}_n$ estimates the individual policy gradient $v(\pi_n) = (\nabla_i V_{i,\rho}(\pi_n))_{i \in \mathcal{N}}$. The signal decomposes as
+\begin{equation}
+\label{eq:signal-decomp-ch7}
+    \hat{v}_n = v(\pi_n) + U_n + b_n,
+\end{equation}
+with zero-mean noise $U_n$ and bias $b_n$ satisfying
+\begin{equation}
+\label{eq:bias-var-ch7}
+    \mathbb{E}[\|b_n\| \mid \mathcal{F}_n] \leq B_n = \mathcal{O}(1/n^{\ell_b}), \qquad \mathbb{E}[\|U_n\|^2 \mid \mathcal{F}_n] \leq \sigma_n^2 = \mathcal{O}(n^{\ell_\sigma}).
+\end{equation}
+
+The main convergence tool is the \emph{Lyapunov function} $D_n = \frac{1}{2}\|\pi_n - \pi^*\|^2$, which satisfies the \emph{energy inequality} (Giannou Lemma~A.1):
+\begin{equation}
+\label{eq:energy-ch7}
+    D_{n+1} \leq D_n + \gamma_n \langle v(\pi_n), \pi_n - \pi^* \rangle + \gamma_n \xi_n + \gamma_n \chi_n + \gamma_n^2 \psi_n^2,
+\end{equation}
+where $\xi_n = \langle U_n, \pi_n - \pi^* \rangle$ is a martingale difference, $\chi_n = \|\Pi\| B_n$ captures bias, and $\psi_n^2 = \frac{1}{2}\|\hat{v}_n\|^2$ captures the gradient magnitude.
+
+We recall two key results from~\cite{giannou2022}:
+
+\begin{theorem}[Giannou et al., Theorem~1]
+\label{thm:giannou1-ch7}
+If $\pi^*$ is a \emph{stable} Nash policy and $\gamma_n = \gamma/(n+m)^p$ with $p \in (1/2, 1]$, $p + \ell_b > 1$, $p - \ell_\sigma > 1/2$, then for any $\delta > 0$ there exists a neighbourhood $\mathcal{U}$ of $\pi^*$ such that $\mathbb{P}(\pi_n \to \pi^* \mid \pi_1 \in \mathcal{U}) \geq 1 - \delta$.
+\end{theorem}
+
+\begin{theorem}[Giannou et al., Theorem~2]
+\label{thm:giannou2-ch7}
+If $\pi^*$ is SOS with parameter $\mu > 0$ (i.e.\ $\langle v(\pi), \pi - \pi^* \rangle \leq -\mu\|\pi - \pi^*\|^2$ locally), then the convergence rate is $\mathbb{E}[\|\pi_n - \pi^*\|^2 \mid \mathcal{E}] = \mathcal{O}(1/n^q)$ where $q = \min\{\ell_b, p - 2\ell_\sigma\}$. For REINFORCE, this gives $\mathcal{O}(1/\sqrt{n})$.
+\end{theorem}
+
+
+%% ========================================================================
+\section{Evidence-Weighted Policy Gradient}
+\label{sec:ewpg}
+%% ========================================================================
+
+\subsection{Motivation}
+
+In multi-agent stochastic games, agents often have access to data of varying quality. An agent with abundant, high-quality data produces low-variance gradient estimates, while an agent operating on sparse or noisy observations produces high-variance estimates. It is natural for the latter to take smaller gradient steps to avoid acting on unreliable information. This motivates the following algorithm.
+
+\subsection{Algorithm}
+
+\begin{definition}[Evidence-weighted PG]
+\label{def:ewpg-ch7}
+Let $w_{i,n} \in [w_{\min}, 1]$ be an $\mathcal{F}_n$-measurable evidence weight for agent $i$ at episode $n$, with $w_{\min} > 0$. The \emph{evidence-weighted PG} (EWPG) update is:
+\begin{equation}
+\label{eq:ewpg-ch7}
+\tag{EWPG}
+    \pi_{i,n+1} = \operatorname{proj}_{\Pi_i}\bigl(\pi_{i,n} + \gamma_n \cdot w_{i,n} \cdot \hat{v}_{i,n}\bigr).
+\end{equation}
+\end{definition}
+
+Writing $W_n = \operatorname{diag}(w_{1,n}, \ldots, w_{N,n})$ for the evidence-weighting matrix, the joint update is $\pi_{n+1} = \operatorname{proj}_\Pi(\pi_n + \gamma_n W_n \hat{v}_n)$.
+
+\subsection{Modified energy inequality}
+
+\begin{lemma}[Modified energy inequality]
+\label{lem:energy-ewpg-ch7}
+Under EWPG, the Lyapunov function satisfies:
+\begin{equation}
+\label{eq:energy-ewpg-ch7}
+    D_{n+1} \leq D_n + \gamma_n \langle W_n v(\pi_n), \pi_n - \pi^* \rangle + \gamma_n \xi_n^w + \gamma_n \chi_n^w + \gamma_n^2 (\psi_n^w)^2,
+\end{equation}
+where $\xi_n^w = \langle W_n U_n, \pi_n - \pi^* \rangle$ (zero-mean), $\chi_n^w = \|\Pi\| \|W_n\| B_n$, and $(\psi_n^w)^2 = \frac{1}{2}\|W_n \hat{v}_n\|^2$.
+\end{lemma}
+
+\begin{proof}
+By non-expansiveness of $\operatorname{proj}_\Pi$:
+\begin{align*}
+    D_{n+1} &= \tfrac{1}{2}\|\operatorname{proj}_\Pi(\pi_n + \gamma_n W_n \hat{v}_n) - \pi^*\|^2 \\
+    &\leq \tfrac{1}{2}\|(\pi_n - \pi^*) + \gamma_n W_n \hat{v}_n\|^2 \\
+    &= D_n + \gamma_n \langle W_n \hat{v}_n, \pi_n - \pi^* \rangle + \tfrac{1}{2}\gamma_n^2 \|W_n \hat{v}_n\|^2.
+\end{align*}
+Expanding $\hat{v}_n = v(\pi_n) + U_n + b_n$ and bounding the bias term by Cauchy--Schwarz gives the result.
+\end{proof}
+
+\subsection{Variance scaling}
+
+The key observation is how evidence weighting affects the noise.
+
+\begin{lemma}[Variance scaling]
+\label{lem:var-scaling-ch7}
+The conditional variance of the weighted noise satisfies:
+\begin{equation}
+    \mathbb{E}[\|W_n U_n\|^2 \mid \mathcal{F}_n] = \sum_{i=1}^N w_{i,n}^2 \cdot \mathbb{E}[\|U_{i,n}\|^2 \mid \mathcal{F}_n] \leq \sum_{i=1}^N w_{i,n}^2 \cdot \sigma_{i,n}^2.
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+Since $W_n$ is block-diagonal: $\|W_n U_n\|^2 = \sum_i w_{i,n}^2 \|U_{i,n}\|^2$. Take conditional expectations.
+\end{proof}
+
+\subsection{The AM-HM variance improvement}
+
+We now assume a \emph{heterogeneous variance model}: agent $i$'s gradient estimator has variance $\sigma_{i,n}^2 = C / V_{i,n}$, inversely proportional to its evidence weight. This is natural: agents with less evidence produce noisier estimates.
+
+Setting $w_{i,n} = V_{i,n} / \bar{V}_n$ where $\bar{V}_n = \frac{1}{N}\sum_j V_{j,n}$, the weighted and unweighted total variances are:
+\begin{align}
+    \sigma_{\text{std}}^2 &= \sum_i \frac{C}{V_{i,n}} = \frac{CN}{\operatorname{HM}(V_n)}, \label{eq:var-std-ch7}\\
+    \sigma_w^2 &= \sum_i \frac{V_{i,n}^2}{\bar{V}_n^2} \cdot \frac{C}{V_{i,n}} = \frac{CN}{\operatorname{AM}(V_n)}. \label{eq:var-w-ch7}
+\end{align}
+
+\begin{theorem}[AM-HM variance improvement]
+\label{thm:am-hm-ch7}
+Under the heterogeneous variance model with $w_{i,n} = V_{i,n}/\bar{V}_n$:
+\begin{equation}
+\label{eq:am-hm-ch7}
+\boxed{
+    \frac{\sigma_w^2}{\sigma_{\mathrm{std}}^2} = \frac{\operatorname{HM}(V_n)}{\operatorname{AM}(V_n)} \leq 1.
+}
+\end{equation}
+Equality holds if and only if all $V_{i,n}$ are equal.
+\end{theorem}
+
+\begin{proof}
+From~\eqref{eq:var-std-ch7} and~\eqref{eq:var-w-ch7}, the ratio is $\operatorname{HM}/\operatorname{AM}$. The AM-HM inequality follows from Cauchy--Schwarz applied to $(\sqrt{V_1}, \ldots, \sqrt{V_N})$ and $(1/\sqrt{V_1}, \ldots, 1/\sqrt{V_N})$:
+\[
+    N^2 = \left(\sum_i 1\right)^2 \leq \left(\sum_i V_i\right)\left(\sum_i V_i^{-1}\right),
+\]
+which rearranges to $\operatorname{HM}(V) \leq \operatorname{AM}(V)$. Equality holds iff $V_i$ is constant.
+\end{proof}
+
+\begin{remark}[Magnitude of improvement]
+For $N = 2$ agents with evidence ratio $r = V_1/V_2 = 10$: $\operatorname{HM}/\operatorname{AM} = 4r/(1+r)^2 \approx 0.33$, a 67\% variance reduction.
+\end{remark}
+
+\subsection{Convergence theorem}
+
+\begin{theorem}[Convergence of EWPG]
+\label{thm:ewpg-ch7}
+Under the hypotheses of Theorem~\ref{thm:giannou2-ch7} with $\pi^*$ SOS (parameter $\mu$), the EWPG iterates satisfy:
+\begin{equation}
+    \mathbb{E}[\|\pi_n - \pi^*\|^2 \mid \mathcal{E}] = \mathcal{O}\!\left(\frac{C_w}{n^q}\right),
+\end{equation}
+where $q = \min\{\ell_b, p - 2\ell_\sigma\}$ is unchanged and $C_w / C_{\mathrm{std}} = \operatorname{HM}(V)/\operatorname{AM}(V) \leq 1$.
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+The proof follows Giannou et al.\ Appendix~B with $\gamma_n \to \gamma_n w_{i,n}$. The SOS condition gives contraction rate $2\mu w_{\min} \gamma_n$. The variance sum $\sum_n \gamma_n^2 \sigma_w^2$ gains the $\operatorname{HM}/\operatorname{AM}$ factor by Theorem~\ref{thm:am-hm-ch7}. The rate exponent $q$ depends on the step-size schedule, not on the scaling, so it is unchanged. The constant $C_w$ inherits the $\operatorname{HM}/\operatorname{AM}$ factor from the variance summation.
+\end{proof}
+
+
+%% ========================================================================
+\section{Opponent-Shaping Policy Gradient}
+\label{sec:lola-convergence}
+%% ========================================================================
+
+\subsection{Background: LOLA}
+
+Foerster et al.~\cite{foerster2018lola} introduced Learning with Opponent-Learning Awareness (LOLA), in which agent $i$ differentiates through agent $j$'s anticipated learning step:
+\begin{equation}
+\label{eq:lola-gradient-ch7}
+    \nabla_{\pi_i}^{\text{LOLA}} R_i = \nabla_{\pi_i} R_i + \sum_{j \neq i} \frac{\partial R_i}{\partial \pi_j} \cdot \frac{\partial \pi_j'}{\partial \pi_i},
+\end{equation}
+where $\pi_j' = \pi_j - \eta_j \nabla_{\pi_j} R_j$ is $j$'s anticipated update. Despite strong empirical results, no convergence guarantees existed for LOLA in general stochastic games. We now provide one.
+
+\subsection{LOLA-PG algorithm}
+
+\begin{definition}[LOLA-PG]
+\label{def:lola-pg-ch7}
+The \emph{LOLA-PG} update is:
+\begin{equation}
+\label{eq:lola-pg-ch7}
+\tag{LOLA-PG}
+    \pi_{n+1} = \operatorname{proj}_\Pi\bigl(\pi_n + \gamma_n(\hat{v}_n + \lambda_n \cdot \mathrm{OS}(\pi_n))\bigr),
+\end{equation}
+where $\mathrm{OS}(\pi)$ is the opponent-shaping term from~\eqref{eq:lola-gradient-ch7} and $\lambda_n \geq 0$ controls its strength.
+\end{definition}
+
+The opponent-shaping map satisfies: (a) $\|\mathrm{OS}(\pi)\| \leq G$ for all $\pi \in \Pi$ (boundedness), and (b) $\mathrm{OS}(\pi^*) = 0$ at Nash (vanishing at equilibrium).
+
+\subsection{Bias absorption}
+
+\begin{lemma}[Opponent shaping as additional bias]
+\label{lem:bias-absorption-ch7}
+The LOLA gradient signal decomposes as $\hat{v}_n^{\mathrm{LOLA}} = v(\pi_n) + U_n + b_n^{\mathrm{LOLA}}$ with:
+\begin{equation}
+    \|b_n^{\mathrm{LOLA}}\| \leq B_n + \lambda_n G.
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+Triangle inequality: $\|b_n + \lambda_n \mathrm{OS}(\pi_n)\| \leq \|b_n\| + \lambda_n \|\mathrm{OS}(\pi_n)\| \leq B_n + \lambda_n G$.
+\end{proof}
+
+With annealing $\lambda_n = \bar{\lambda}/(n+m)^r$ and $r > 1-p$, the modified bias satisfies $B_n^{\mathrm{LOLA}} = \mathcal{O}(1/n^{\min(\ell_b, r)})$, and Giannou's condition $p + \ell_b^{\mathrm{LOLA}} > 1$ is satisfied.
+
+\begin{theorem}[Convergence of annealed LOLA-PG]
+\label{thm:annealed-ch7}
+Under the hypotheses of Theorem~\ref{thm:giannou1-ch7} with $\lambda_n = \bar{\lambda}/(n+m)^r$, $r > 1 - p$:
+\begin{enumerate}
+    \item $\mathbb{P}(\pi_n \to \pi^* \mid \pi_1 \in \mathcal{U}) \geq 1 - \delta$ for a neighbourhood $\mathcal{U}$ of $\pi^*$.
+    \item Under SOS: $\mathbb{E}[\|\pi_n - \pi^*\|^2 \mid \mathcal{E}] = \mathcal{O}(1/n^{q_{\mathrm{LOLA}}})$ where $q_{\mathrm{LOLA}} = \min(\ell_b, r, p - 2\ell_\sigma)$.
+    \item Choosing $r = p$ gives $q_{\mathrm{LOLA}} = q$ (same rate as standard PG).
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+By Lemma~\ref{lem:bias-absorption-ch7}, LOLA-PG is a special case of (PG) with modified bias. Since $\mathrm{OS}(\pi_n)$ is $\mathcal{F}_n$-measurable, the noise $U_n$ is unchanged. All hypotheses of Theorem~\ref{thm:giannou1-ch7} hold with modified bias exponent $\ell_b^{\mathrm{LOLA}} = \min(\ell_b, r)$.
+\end{proof}
+
+\subsection{Basin of attraction enlargement}
+
+This is the deeper result. Near $\pi^*$, the gradient field linearises as $v(\pi) \approx \operatorname{Jac}_v(\pi^*)(\pi - \pi^*)$. Under LOLA, the effective gradient field becomes:
+\[
+    v^{\mathrm{LOLA}}(\pi) \approx \bigl(\operatorname{Jac}_v(\pi^*) + \lambda \cdot H(\pi^*)\bigr)(\pi - \pi^*),
+\]
+where $H(\pi^*) = \nabla_\pi \mathrm{OS}(\pi)\big|_{\pi^*}$ is the \emph{opponent-shaping Hessian}, using the fact that $\mathrm{OS}(\pi^*) = 0$.
+
+Decompose $\operatorname{Jac}_v = S + A$ into symmetric and antisymmetric parts. The SOS condition requires $S \preceq -\mu I$.
+
+\begin{definition}[Spectral reinforcement]
+\label{def:spectral-ch7}
+The opponent-shaping Hessian $H$ is \emph{spectrally reinforcing} if its symmetric part $S_H = (H + H^\top)/2$ is negative semi-definite. Write $\mu_H = -\lambda_{\max}(S_H) \geq 0$.
+\end{definition}
+
+\begin{theorem}[Basin of attraction enlargement]
+\label{thm:basin-ch7}
+If $H(\pi^*)$ is spectrally reinforcing with $\mu_H > 0$, then LOLA-PG with constant $\lambda > 0$ has SOS parameter:
+\begin{equation}
+\label{eq:mu-lola-ch7}
+\boxed{
+    \mu_{\mathrm{LOLA}} = \mu + \lambda \mu_H > \mu.
+}
+\end{equation}
+Consequently, the basin of attraction is strictly larger and the convergence rate constant improves by a factor of $\mu/\mu_{\mathrm{LOLA}} < 1$.
+\end{theorem}
+
+\begin{proof}
+For $\pi$ in the SOS ball:
+\begin{align*}
+    \langle v^{\mathrm{LOLA}}(\pi), \pi - \pi^* \rangle
+    &= \langle v(\pi), \pi - \pi^* \rangle + \lambda \langle \mathrm{OS}(\pi), \pi - \pi^* \rangle \\
+    &\approx (\pi - \pi^*)^\top (S + \lambda S_H)(\pi - \pi^*) \\
+    &\leq -(\mu + \lambda\mu_H)\|\pi - \pi^*\|^2 = -\mu_{\mathrm{LOLA}}\|\pi - \pi^*\|^2. \qedhere
+\end{align*}
+\end{proof}
+
+The spectral reinforcement condition holds in zero-sum games (where LOLA converts rotational dynamics into contractive ones) and in games with negative cross-Hessians ($\partial^2 V_i / \partial\pi_i \partial\pi_j \prec 0$). It does not hold in potential games, where $A = 0$ and LOLA adds no benefit.
+
+
+%% ========================================================================
+\section{Combined EW-LOLA-PG}
+\label{sec:combined-convergence}
+%% ========================================================================
+
+Combining both modifications:
+\begin{equation}
+\label{eq:ew-lola-ch7}
+\tag{EW-LOLA-PG}
+    \pi_{i,n+1} = \operatorname{proj}_{\Pi_i}\bigl(\pi_{i,n} + \gamma_n \cdot w_{i,n} \cdot (\hat{v}_{i,n} + \lambda_n \cdot \mathrm{OS}_i(\pi_n))\bigr).
+\end{equation}
+
+\begin{theorem}[Combined convergence]
+\label{thm:combined-ch7}
+Under annealed LOLA ($\lambda_n \to 0$) and evidence weighting, EW-LOLA-PG converges to SOS Nash with:
+\begin{equation}
+    \mathbb{E}[\|\pi_n - \pi^*\|^2 \mid \mathcal{E}] = \mathcal{O}\!\left(\frac{C_{\mathrm{combined}}}{n^q}\right),
+\end{equation}
+where:
+\begin{enumerate}[(i)]
+    \item $C_{\mathrm{combined}} = \frac{\operatorname{HM}(V)}{\operatorname{AM}(V)} \cdot C_{\mathrm{std}}$ \quad (variance improvement),
+    \item $\mu_{\mathrm{LOLA}} = \mu + \lambda \mu_H$ \quad (basin enlargement with constant-$\lambda$ variant),
+    \item $q = \min(\ell_b, r, p - 2\ell_\sigma)$ \quad (same exponent).
+\end{enumerate}
+The two improvements are orthogonal: evidence weighting reduces $\sigma^2$, opponent shaping increases $\mu$.
+\end{theorem}
+
+\begin{proof}
+Evidence weighting modifies the noise term in the energy inequality~\eqref{eq:energy-ewpg-ch7}; opponent shaping modifies the bias. Since noise and bias enter the Lyapunov recursion in separate terms (Giannou eq.~B.8), the two modifications compose without interaction.
+\end{proof}
+
+
+%% ========================================================================
+\section{Relationship to Prior Work}
+\label{sec:relationship-ch7}
+%% ========================================================================
+
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lll}
+\hline
+\textbf{Challenge} & \textbf{Mechanism} & \textbf{Addressed by} \\
+\hline
+Gradient estimation & REINFORCE & Giannou et al.~\cite{giannou2022} \\
+Heterogeneous noise & Evidence weighting $w_i$ & EWPG (this chapter) \\
+Non-stationarity & Opponent modelling & LOLA-PG (this chapter) \\
+Global convergence & Open problem & Future work \\
+\hline
+\end{tabular}
+\end{center}
+
+\paragraph{Complementarity of the two modifications.} The AM-HM factor $\operatorname{HM}(V)/\operatorname{AM}(V)$ shows that agents with diverse evidence quality collectively achieve a tighter variance bound, not by being individually better but by having different strengths. The basin enlargement $\mu_{\mathrm{LOLA}} > \mu$ captures a complementary insight: agents that model each other's learning can reach equilibria that independent learners cannot.
+
+
+%% ========================================================================
+\section{Discussion}
+\label{sec:discussion-ch7}
+%% ========================================================================
+
+\paragraph{What is new.} The evidence-weighted PG result (Theorem~\ref{thm:am-hm-ch7}) and the LOLA basin enlargement (Theorem~\ref{thm:basin-ch7}) are, to our knowledge, the first results connecting evidence weighting and opponent-shaping methods to provable convergence improvements in general stochastic games. The proofs are modifications of~\cite{giannou2022}, not new techniques, but the results are new.
+
+\paragraph{Limitations.}
+\begin{enumerate}
+    \item The heterogeneous variance model $\sigma_i^2 = C/V_i$ is assumed, not derived.
+    \item The spectral reinforcement condition must be verified game-by-game.
+    \item The improvement is in the constant, not the rate exponent.
+    \item LOLA requires modelling opponents' gradients, which may introduce additional estimation error.
+\end{enumerate}
+
+\paragraph{Lean formalisation.} Both results have been formalised in Lean~4 with Mathlib dependencies. The key algebraic steps (energy inequality, AM-HM inequality, bias absorption) are verified; the measure-theoretic steps (martingale convergence) are axiomatised. The Lean source is available at \texttt{formalization/EvidenceWeightedPG.lean} and \texttt{formalization/OpponentShapingPG.lean}.

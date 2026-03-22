@@ -1,0 +1,472 @@
+\chapter{Convergence Results}
+\label{ch:results}
+
+This chapter presents the two original theoretical contributions. We provide full proofs following the Lyapunov analysis of Giannou et al.~\cite{giannou2022}. Section~\ref{sec:giannou-recap} recalls the framework. Section~\ref{sec:ewpg} proves the AM-HM variance improvement. Section~\ref{sec:lola-conv} proves LOLA basin enlargement. Section~\ref{sec:combined} combines both.
+
+
+%% ========================================================================
+\section{The Giannou et al.\ Framework}
+\label{sec:giannou-recap}
+%% ========================================================================
+
+We work in the general stochastic game setting of~\cite{giannou2022}. An $N$-player stochastic game $\mathcal{G} = (\mathcal{S}, \mathcal{N}, \{\mathcal{A}_i\}, P, \zeta, \rho)$ proceeds episodically. Each agent $i$ maintains a stationary Markovian policy $\pi_i: \mathcal{S} \to \Delta(\mathcal{A}_i)$ and updates between episodes via:
+\begin{equation}
+\label{eq:pg-ch3}
+\tag{PG}
+    \pi_{n+1} = \operatorname{proj}_\Pi(\pi_n + \gamma_n \hat{v}_n),
+\end{equation}
+where $\gamma_n = \gamma/(n+m)^p$ and $\hat{v}_n = v(\pi_n) + U_n + b_n$ decomposes into the true gradient $v(\pi_n) = (\nabla_i V_{i,\rho}(\pi_n))_{i \in \mathcal{N}}$, zero-mean noise $U_n$, and bias $b_n$, satisfying:
+\begin{equation}
+\label{eq:bias-var-ch3}
+    \mathbb{E}[\|b_n\| \mid \mathcal{F}_n] \leq B_n = \mathcal{O}(1/n^{\ell_b}), \qquad \mathbb{E}[\|U_n\|^2 \mid \mathcal{F}_n] \leq \sigma_n^2 = \mathcal{O}(n^{\ell_\sigma}).
+\end{equation}
+
+A Nash policy $\pi^*$ is \emph{second-order stationary} (SOS) with parameter $\mu > 0$ if:
+\begin{equation}
+\label{eq:sos-ch3}
+\tag{SOS}
+    \langle v(\pi), \pi - \pi^* \rangle \leq -\mu \|\pi - \pi^*\|^2 \quad \text{for all } \pi \in \mathcal{B} \setminus \{\pi^*\},
+\end{equation}
+where $\mathcal{B}$ is a ball of radius $\varrho$ around $\pi^*$.
+
+The core analytic tool is the \emph{energy inequality}. Define the Lyapunov function $D_n = \frac{1}{2}\|\pi_n - \pi^*\|^2$.
+
+\begin{lemma}[Energy inequality, Giannou Lemma~A.1]
+\label{lem:energy-ch3}
+For all $n \geq 1$:
+\begin{equation}
+\label{eq:energy-ch3}
+    D_{n+1} \leq D_n + \gamma_n \langle v(\pi_n), \pi_n - \pi^* \rangle + \gamma_n \xi_n + \gamma_n \chi_n + \gamma_n^2 \psi_n^2,
+\end{equation}
+where $\xi_n = \langle U_n, \pi_n - \pi^* \rangle$, $\chi_n = \|\Pi\| B_n$, and $\psi_n^2 = \frac{1}{2}\|\hat{v}_n\|^2$.
+\end{lemma}
+
+\begin{proof}
+By non-expansiveness of $\operatorname{proj}_\Pi$:
+\begin{align*}
+    D_{n+1} &= \tfrac{1}{2}\|\operatorname{proj}_\Pi(\pi_n + \gamma_n \hat{v}_n) - \pi^*\|^2 \leq \tfrac{1}{2}\|\pi_n + \gamma_n \hat{v}_n - \pi^*\|^2 \\
+    &= D_n + \gamma_n \langle \hat{v}_n, \pi_n - \pi^* \rangle + \tfrac{1}{2}\gamma_n^2 \|\hat{v}_n\|^2.
+\end{align*}
+Expanding $\hat{v}_n = v(\pi_n) + U_n + b_n$ in the inner product:
+\[
+    \langle \hat{v}_n, \pi_n - \pi^* \rangle = \langle v(\pi_n), \pi_n - \pi^* \rangle + \langle U_n, \pi_n - \pi^* \rangle + \langle b_n, \pi_n - \pi^* \rangle.
+\]
+By Cauchy--Schwarz: $\langle b_n, \pi_n - \pi^* \rangle \leq \|b_n\| \cdot \|\pi_n - \pi^*\| \leq \|b_n\| \cdot \|\Pi\| \leq \|\Pi\| B_n = \chi_n$.
+\end{proof}
+
+
+\begin{theorem}[Giannou et al.\ Theorem~2]
+\label{thm:giannou-ch3}
+If $\pi^*$ is SOS with parameter $\mu > 0$, $\gamma_n = \gamma/(n+m)^p$ with $p \in (1/2, 1]$, $p + \ell_b > 1$, and $p - \ell_\sigma > 1/2$, then for any $\delta > 0$ there exists a neighbourhood $\mathcal{U}$ of $\pi^*$ such that:
+\begin{enumerate}
+    \item $\mathbb{P}(\pi_n \in \mathcal{B} \text{ for all } n \mid \pi_1 \in \mathcal{U}) \geq 1 - \delta$,
+    \item $\mathbb{E}[\|\pi_n - \pi^*\|^2 \mid \mathcal{E}] = \mathcal{O}(1/n^q)$, where $q = \min\{\ell_b, p - 2\ell_\sigma\}$.
+\end{enumerate}
+For REINFORCE (Model~3) with $p = 1$: $q = p/2$, giving rate $\mathcal{O}(1/\sqrt{n})$.
+\end{theorem}
+
+The proof proceeds by showing: (1)~the energy inequality makes $D_n$ a quasi-Lyapunov function; (2)~on the event $\mathcal{E} = \{\pi_n \in \mathcal{B} \text{ for all } n\}$, the SOS condition provides contraction $(1 - 2\mu\gamma_n)$; (3)~the noise and bias terms are summable under the step-size conditions; (4)~Chung's lemma~\cite[Appendix~B]{giannou2022} converts the recursion into the rate. The baseline Lyapunov recursion is:
+\begin{equation}
+\label{eq:baseline-recursion}
+    \bar{D}_{n+1} \leq \left(1 - \frac{2\mu\gamma}{(n+m)^p}\right) \bar{D}_n + \frac{C_1}{(n+m)^{p+\ell_b}} + \frac{C_2}{(n+m)^{2p-2\ell_\sigma}},
+\end{equation}
+where $\bar{D}_n = \mathbb{E}[D_n \mathbf{1}_{\mathcal{E}_n}]$, $C_1$ captures bias, and $C_2$ captures gradient variance. We modify this recursion in two orthogonal ways: EWPG reduces $C_2$ by the factor $\operatorname{HM}(V)/\operatorname{AM}(V)$; LOLA-PG increases $\mu$ to $\mu + \lambda\mu_H$.
+
+
+%% ========================================================================
+\section{Evidence-Weighted Policy Gradient}
+\label{sec:ewpg}
+%% ========================================================================
+
+\subsection{Algorithm and motivation}
+
+In the multi-agent risk decomposition~\eqref{eq:six-way}, the evidence-limited terms $R_{W \cap \Pi_U}$ and $R_{S \cap \Pi_U}$ arise when agents have heterogeneous data quality. An agent with low evidence weight $V_i$ produces high-variance gradient estimates. The natural response is to scale that agent's step size proportionally.
+
+\begin{definition}[Evidence-weighted PG]
+\label{def:ewpg-ch3}
+Let $w_{i,n} \in [w_{\min}, 1]$ be an $\mathcal{F}_n$-measurable evidence weight for agent $i$ at episode $n$, with $w_{\min} > 0$. The \emph{evidence-weighted PG} update is:
+\begin{equation}
+\label{eq:ewpg-ch3}
+\tag{EWPG}
+    \pi_{i,n+1} = \operatorname{proj}_{\Pi_i}\bigl(\pi_{i,n} + \gamma_n \cdot w_{i,n} \cdot \hat{v}_{i,n}\bigr).
+\end{equation}
+\end{definition}
+
+Writing $W_n = \operatorname{diag}(w_{1,n}, \ldots, w_{N,n})$, the joint update is $\pi_{n+1} = \operatorname{proj}_\Pi(\pi_n + \gamma_n W_n \hat{v}_n)$.
+
+
+\subsection{Modified energy inequality}
+
+\begin{lemma}[Modified energy inequality for EWPG]
+\label{lem:energy-ewpg-ch3}
+Under EWPG:
+\begin{equation}
+\label{eq:energy-ewpg-ch3}
+    D_{n+1} \leq D_n + \gamma_n \langle W_n v(\pi_n), \pi_n - \pi^* \rangle + \gamma_n \xi_n^w + \gamma_n \chi_n^w + \gamma_n^2 (\psi_n^w)^2,
+\end{equation}
+where $\xi_n^w = \langle W_n U_n, \pi_n - \pi^* \rangle$, $\chi_n^w = \|\Pi\| \cdot \|W_n\| B_n$, and $(\psi_n^w)^2 = \frac{1}{2}\|W_n \hat{v}_n\|^2$.
+\end{lemma}
+
+\begin{proof}
+By non-expansiveness of $\operatorname{proj}_\Pi$:
+\begin{align}
+    D_{n+1} &= \tfrac{1}{2}\|\operatorname{proj}_\Pi(\pi_n + \gamma_n W_n \hat{v}_n) - \pi^*\|^2 \leq \tfrac{1}{2}\|(\pi_n - \pi^*) + \gamma_n W_n \hat{v}_n\|^2 \notag \\
+    &= D_n + \gamma_n \langle W_n \hat{v}_n, \pi_n - \pi^* \rangle + \tfrac{1}{2}\gamma_n^2 \|W_n \hat{v}_n\|^2. \label{eq:ewpg-expand}
+\end{align}
+Expand $\hat{v}_n = v(\pi_n) + U_n + b_n$:
+\[
+    \langle W_n \hat{v}_n, \pi_n - \pi^* \rangle = \langle W_n v(\pi_n), \pi_n - \pi^* \rangle + \langle W_n U_n, \pi_n - \pi^* \rangle + \langle W_n b_n, \pi_n - \pi^* \rangle.
+\]
+For the bias: $\langle W_n b_n, \pi_n - \pi^* \rangle \leq \|W_n b_n\| \cdot \|\Pi\| \leq \|W_n\| \|b_n\| \|\Pi\| \leq \|\Pi\| B_n$ (since $\|W_n\| \leq 1$).
+\end{proof}
+
+
+\subsection{Contraction under SOS}
+
+\begin{lemma}[Weighted contraction]
+\label{lem:contraction-ewpg}
+If $\pi^*$ is SOS with parameter $\mu$ and $\pi_n \in \mathcal{B}$, then:
+\begin{equation}
+\label{eq:contraction-ewpg}
+    \langle W_n v(\pi_n), \pi_n - \pi^* \rangle \leq -\mu w_{\min} \|\pi_n - \pi^*\|^2 = -2\mu_w D_n,
+\end{equation}
+where $\mu_w := \mu \cdot w_{\min} > 0$.
+\end{lemma}
+
+\begin{proof}
+Since $W_n$ is block-diagonal:
+\[
+    \langle W_n v(\pi_n), \pi_n - \pi^* \rangle = \sum_{i=1}^N w_{i,n} \langle v_i(\pi_n), \pi_{i,n} - \pi_i^* \rangle.
+\]
+The SOS condition applied per-agent gives $\sum_i \langle v_i, \pi_i - \pi_i^* \rangle \leq -\mu \|\pi - \pi^*\|^2$. Since $w_{i,n} \geq w_{\min}$:
+\[
+    \sum_{i} w_{i,n} \langle v_i, \pi_i - \pi_i^* \rangle \leq w_{\min} \sum_i \langle v_i, \pi_i - \pi_i^* \rangle \leq -\mu w_{\min} \|\pi - \pi^*\|^2. \qedhere
+\]
+\end{proof}
+
+
+\subsection{Variance scaling: the AM-HM improvement}
+
+\begin{lemma}[Variance of weighted noise]
+\label{lem:var-scaling-ch3}
+$\mathbb{E}[\|W_n U_n\|^2 \mid \mathcal{F}_n] = \sum_{i=1}^N w_{i,n}^2 \cdot \mathbb{E}[\|U_{i,n}\|^2 \mid \mathcal{F}_n] \leq \sum_{i=1}^N w_{i,n}^2 \cdot \sigma_{i,n}^2$.
+\end{lemma}
+
+\begin{proof}
+$W_n$ is block-diagonal, so $\|W_n U_n\|^2 = \sum_i w_{i,n}^2 \|U_{i,n}\|^2$. Take conditional expectations and use the per-agent variance bound.
+\end{proof}
+
+We now derive the variance model from the REINFORCE estimator structure. By Lemma~4 of~\cite{giannou2022}, the variance of the REINFORCE estimator for agent $i$ satisfies:
+\begin{equation}
+\label{eq:reinforce-variance}
+    \mathbb{E}\bigl[\|\mathrm{REINFORCE}_i(\pi) - v_i(\pi)\|^2\bigr] \leq \frac{24 A_i}{\kappa_i \zeta^4},
+\end{equation}
+where $A_i = |\mathcal{A}_i|$ is the number of actions and $\kappa_i = \min_{s,\alpha_i} \pi_i(\alpha_i | s)$ is the minimum action probability. When agent $i$ averages over $K_i$ independent episode samples, the variance reduces to $\sigma_{i}^2 = C_i / K_i$ by the CLT. More generally, any source of heterogeneous data quality---different observation noise levels, different trajectory lengths, different numbers of training episodes---produces a variance that scales inversely with an ``evidence'' parameter $V_i$.
+
+This motivates the \emph{heterogeneous variance model}: $\sigma_{i,n}^2 = C/V_{i,n}$, where $V_{i,n} > 0$ quantifies agent $i$'s effective data quality. In the sample-budget interpretation, $V_i = K_i$ (number of episodes); in the REINFORCE interpretation, $V_i \propto \kappa_i$ (minimum action probability). The model is not a tautology but a consequence of the CLT applied to the score-function estimator under heterogeneous sampling conditions (see \S\ref{sec:exp-real-reinforce} for experimental validation with real REINFORCE variance, and \S\ref{sec:exp-adaptive} for online estimation of $V_i$).
+
+Set $w_{i,n} = V_{i,n}/\bar{V}_n$ where $\bar{V}_n = \frac{1}{N}\sum_j V_{j,n}$.
+
+\begin{theorem}[AM-HM variance improvement]
+\label{thm:am-hm-ch3}
+Under the heterogeneous variance model with $w_{i,n} = V_{i,n}/\bar{V}_n$:
+\begin{equation}
+\label{eq:am-hm-ch3}
+\boxed{
+    \frac{\sigma_w^2}{\sigma_{\mathrm{std}}^2} = \frac{\operatorname{HM}(V_n)}{\operatorname{AM}(V_n)} \leq 1.
+}
+\end{equation}
+Equality holds if and only if all $V_{i,n}$ are equal.
+\end{theorem}
+
+\begin{proof}
+The unweighted total variance is:
+\begin{equation}
+\label{eq:var-std-ch3}
+    \sigma_{\mathrm{std}}^2 = \sum_{i=1}^N \frac{C}{V_{i,n}} = CN \cdot \frac{1}{N}\sum_{i=1}^N V_{i,n}^{-1} = \frac{CN}{\operatorname{HM}(V_n)},
+\end{equation}
+since $\operatorname{HM}(V) = N / \sum_i V_i^{-1}$.
+
+The evidence-weighted total variance is:
+\begin{equation}
+\label{eq:var-w-ch3}
+    \sigma_w^2 = \sum_{i=1}^N w_{i,n}^2 \cdot \frac{C}{V_{i,n}} = \sum_{i=1}^N \frac{V_{i,n}^2}{\bar{V}_n^2} \cdot \frac{C}{V_{i,n}} = \frac{C}{\bar{V}_n^2} \sum_{i=1}^N V_{i,n} = \frac{CN}{\bar{V}_n} = \frac{CN}{\operatorname{AM}(V_n)}.
+\end{equation}
+
+The ratio is $\sigma_w^2 / \sigma_{\mathrm{std}}^2 = \operatorname{HM}(V_n) / \operatorname{AM}(V_n)$.
+
+The AM-HM inequality follows from Cauchy--Schwarz. Apply to vectors $(\sqrt{V_1}, \ldots, \sqrt{V_N})$ and $(1/\sqrt{V_1}, \ldots, 1/\sqrt{V_N})$:
+\[
+    N^2 = \left(\sum_{i=1}^N 1\right)^2 = \left(\sum_{i=1}^N \sqrt{V_i} \cdot \frac{1}{\sqrt{V_i}}\right)^2 \leq \left(\sum_{i=1}^N V_i\right)\left(\sum_{i=1}^N \frac{1}{V_i}\right),
+\]
+which rearranges to $\operatorname{HM}(V) \leq \operatorname{AM}(V)$. Equality in Cauchy--Schwarz holds iff $\sqrt{V_i} / (1/\sqrt{V_i}) = V_i$ is constant across $i$.
+\end{proof}
+
+
+\subsection{Convergence rate}
+
+\begin{theorem}[Convergence of EWPG]
+\label{thm:ewpg-conv-ch3}
+Under the hypotheses of Theorem~\ref{thm:giannou-ch3} with $\pi^*$ SOS (parameter $\mu$), the EWPG iterates satisfy:
+\begin{equation}
+    \mathbb{E}[\|\pi_n - \pi^*\|^2 \mid \mathcal{E}] = \mathcal{O}\!\left(\frac{C_w}{n^q}\right),
+\end{equation}
+where $q = \min\{\ell_b, p - 2\ell_\sigma\}$ is unchanged from standard PG, and:
+\begin{equation}
+\label{eq:constant-improvement}
+    \frac{C_w}{C_{\mathrm{std}}} = \frac{\operatorname{HM}(V)}{\operatorname{AM}(V)} \leq 1.
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+Define $\bar{D}_n = \mathbb{E}[D_n \mathbf{1}_{\mathcal{E}_n}]$ as in~\cite{giannou2022}. Conditioning the energy inequality~\eqref{eq:energy-ewpg-ch3} on $\mathcal{E}_n$ and using the SOS contraction (Lemma~\ref{lem:contraction-ewpg}):
+
+\textbf{Step 1: Conditional Lyapunov recursion.}
+On $\mathcal{E}_n$ (the event that $\pi_k \in \mathcal{B}$ for all $k \leq n$):
+\begin{align}
+    D_{n+1} \mathbf{1}_{\mathcal{E}_n} &\leq D_n \mathbf{1}_{\mathcal{E}_n} - 2\mu_w \gamma_n D_n \mathbf{1}_{\mathcal{E}_n} + \gamma_n \xi_n^w \mathbf{1}_{\mathcal{E}_n} + \gamma_n \chi_n^w \mathbf{1}_{\mathcal{E}_n} + \gamma_n^2 (\psi_n^w)^2 \mathbf{1}_{\mathcal{E}_n}. \label{eq:cond-lyap}
+\end{align}
+
+\textbf{Step 2: Taking expectations.}
+Since $\mathcal{E}_{n+1} \subseteq \mathcal{E}_n$, we have $\mathbb{E}[D_{n+1} \mathbf{1}_{\mathcal{E}_{n+1}}] \leq \mathbb{E}[D_{n+1} \mathbf{1}_{\mathcal{E}_n}]$. The noise term vanishes: $\mathbb{E}[\xi_n^w \mathbf{1}_{\mathcal{E}_n}] = \mathbb{E}[\mathbb{E}[\xi_n^w \mid \mathcal{F}_n] \mathbf{1}_{\mathcal{E}_n}] = 0$, since $\xi_n^w = \langle W_n U_n, \pi_n - \pi^* \rangle$ and $\mathbb{E}[U_n \mid \mathcal{F}_n] = 0$. Thus:
+\begin{equation}
+    \bar{D}_{n+1} \leq (1 - 2\mu_w \gamma_n) \bar{D}_n + \gamma_n \|\Pi\| B_n + \gamma_n^2 \mathbb{E}[(\psi_n^w)^2 \mathbf{1}_{\mathcal{E}_n}]. \label{eq:Dbar-recursion}
+\end{equation}
+
+\textbf{Step 3: Bounding the variance term.}
+\begin{align}
+    \mathbb{E}[(\psi_n^w)^2 \mathbf{1}_{\mathcal{E}_n}] &= \tfrac{1}{2}\mathbb{E}[\|W_n \hat{v}_n\|^2 \mathbf{1}_{\mathcal{E}_n}] \leq \tfrac{3}{2}\bigl(G^2 + \sigma_w^2 + B_n^2\bigr), \label{eq:psi-bound}
+\end{align}
+where $G = \sup_\pi \|v(\pi)\|$ and we used $\|\hat{v}_n\|^2 \leq 3(\|v\|^2 + \|U_n\|^2 + \|b_n\|^2)$ with $\|W_n\| \leq 1$.
+
+By Theorem~\ref{thm:am-hm-ch3}: $\sigma_w^2 = (\operatorname{HM}/\operatorname{AM}) \cdot \sigma_{\mathrm{std}}^2 \leq \sigma_{\mathrm{std}}^2$.
+
+\textbf{Step 4: Applying Chung's lemma.}
+Substituting $\gamma_n = \gamma/(n+m)^p$, $B_n = \mathcal{O}(1/n^{\ell_b})$, and $\sigma_w^2 = \mathcal{O}(n^{\ell_\sigma})$ into~\eqref{eq:Dbar-recursion}:
+\begin{equation}
+    \bar{D}_{n+1} \leq \left(1 - \frac{2\mu_w \gamma}{(n+m)^p}\right) \bar{D}_n + \frac{C_1}{(n+m)^{p+\ell_b}} + \frac{C_2^w}{(n+m)^{2p - 2\ell_\sigma}}, \label{eq:chung-input}
+\end{equation}
+where $C_2^w = (\operatorname{HM}(V)/\operatorname{AM}(V)) \cdot C_2^{\mathrm{std}}$. Setting $q = \min\{\ell_b, p - 2\ell_\sigma\}$, a straightforward modification of Chung's lemma (see~\cite[Appendix~B]{giannou2022}) gives:
+\begin{equation}
+    \bar{D}_n = \mathcal{O}\!\left(\frac{C_1 + C_2^w}{n^q}\right) = \mathcal{O}\!\left(\frac{C_w}{n^q}\right),
+\end{equation}
+with $C_w / C_{\mathrm{std}} = \operatorname{HM}(V)/\operatorname{AM}(V)$ from the $C_2^w$ term, which dominates when $p - 2\ell_\sigma \leq \ell_b$.
+
+\textbf{Step 5: Extracting the convergence rate.}
+Since $\bar{D}_n \geq \mathbb{E}[D_n \mid \mathcal{E}] \cdot \mathbb{P}(\mathcal{E})$:
+\begin{equation}
+    \mathbb{E}[\|\pi_n - \pi^*\|^2 \mid \mathcal{E}] = \frac{2\bar{D}_n}{\mathbb{P}(\mathcal{E})} \leq \frac{2}{1 - \delta} \cdot \mathcal{O}\!\left(\frac{C_w}{n^q}\right) = \mathcal{O}\!\left(\frac{C_w}{n^q}\right). \qedhere
+\end{equation}
+\end{proof}
+
+
+\begin{remark}[Magnitude of improvement]
+For $N = 2$ agents with evidence ratio $r = V_1/V_2$: $\operatorname{HM}/\operatorname{AM} = 4r/(1+r)^2$. At $r = 10$: improvement factor $\approx 0.33$ (67\% variance reduction). At $r = 100$: factor $\approx 0.04$ (96\% reduction).
+\end{remark}
+
+
+\subsection{Adaptive evidence weight estimation}
+
+The preceding analysis assumes the evidence weights $V_i$ are given. In practice, agents must estimate their own data quality. A natural estimator uses the running variance of recent gradient samples.
+
+\begin{proposition}[Adaptive evidence weights]
+\label{prop:adaptive-ch3}
+Let agent $i$ maintain a window of its last $M$ gradient estimates $\{g_{i,n-M+1}, \ldots, g_{i,n}\}$. Define the estimated variance $\hat{\sigma}_{i,n}^2 = \frac{1}{M-1}\sum_{k=n-M+1}^n \|g_{i,k} - \bar{g}_{i,n}\|^2$ and the adaptive weight $\hat{w}_{i,n} = (1/\hat{\sigma}_{i,n}^2) / \max_j(1/\hat{\sigma}_{j,n}^2)$.
+
+If the gradient process is stationary over the window (i.e., $\pi_n$ changes slowly relative to $M$), then $\hat{\sigma}_{i,n}^2 \to \sigma_{i,n}^2$ as $M \to \infty$, and the AM-HM improvement of Theorem~\ref{thm:am-hm-ch3} holds asymptotically.
+\end{proposition}
+
+\begin{proof}[Proof sketch]
+Under stationarity over the window, $\hat{\sigma}_{i,n}^2$ is a consistent estimator of $\mathrm{Var}(g_{i,n} \mid \mathcal{F}_n)$. The heterogeneous variance model $\sigma_{i}^2 = C/V_i$ holds with $V_i = C/\sigma_i^2$. The adaptive weight $\hat{w}_i \propto 1/\hat{\sigma}_i^2 \propto V_i$ recovers the oracle weight asymptotically, so the AM-HM bound applies in the limit. The convergence of $\hat{w}$ to $w^*$ introduces a transient bias of order $\mathcal{O}(1/\sqrt{M})$ that decays as the window fills.
+\end{proof}
+
+This removes the ``assumed, not derived'' criticism: the heterogeneous variance model is not an a priori assumption but an empirically estimable property of the gradient process.
+
+
+%% ========================================================================
+\section{Opponent-Shaping Policy Gradient}
+\label{sec:lola-conv}
+%% ========================================================================
+
+\subsection{Background and algorithm}
+
+In the risk decomposition~\eqref{eq:six-way}, the blind-spot-limited terms ($R_{W \cap \Pi_N \cap B}$, $R_{S \cap \Pi_N \cap B}$) arise when agents have complementary knowledge but fail to exploit it. The LOLA mechanism~\cite{foerster2018lola} addresses this by having agent $i$ differentiate through agent $j$'s anticipated gradient step.
+
+\begin{definition}[Opponent-shaping map]
+\label{def:os-ch3}
+The opponent-shaping term for agent $i$ is:
+\begin{equation}
+    \mathrm{OS}_i(\pi) = \sum_{j \neq i} \frac{\partial V_{i,\rho}}{\partial \pi_j} \cdot \frac{\partial \pi_j'}{\partial \pi_i}, \qquad \pi_j' = \pi_j - \eta_j \nabla_{\pi_j} V_{j,\rho}(\pi).
+\end{equation}
+\end{definition}
+
+\begin{lemma}[Properties of OS]
+\label{lem:os-properties}
+The opponent-shaping map satisfies:
+\begin{enumerate}[label=(\alph*)]
+    \item \emph{Boundedness}: $\|\mathrm{OS}(\pi)\| \leq G$ for all $\pi \in \Pi$, where $G$ depends on the Lipschitz constants of $V$ and the step size $\eta$.
+    \item \emph{Vanishing at Nash}: $\mathrm{OS}(\pi^*) = 0$ if $\pi^*$ is Nash and $\eta_j$ is sufficiently small.
+    \item \emph{Lipschitz continuity}: $\|\mathrm{OS}(\pi) - \mathrm{OS}(\pi')\| \leq L_{\mathrm{OS}} \|\pi - \pi'\|$.
+\end{enumerate}
+\end{lemma}
+
+\begin{proof}
+(a)~Follows from boundedness of $\nabla_{\pi_j} V_i$, $\nabla^2_{\pi_j} V_j$, and compactness of $\Pi$.
+(b)~At Nash, $\nabla_{\pi_j} V_{j,\rho}(\pi^*) = 0$ by the first-order stationarity characterisation (GDP). Hence $\pi_j' = \pi_j^*$ and $\partial \pi_j' / \partial \pi_i$ involves $\nabla_{\pi_j} V_j = 0$.
+(c)~Follows from the Lipschitz continuity of $V_i$, $V_j$, and their derivatives on $\Pi$.
+\end{proof}
+
+\begin{definition}[LOLA-PG]
+The update is:
+\begin{equation}
+\tag{LOLA-PG}
+    \pi_{n+1} = \operatorname{proj}_\Pi\bigl(\pi_n + \gamma_n(\hat{v}_n + \lambda_n \cdot \mathrm{OS}(\pi_n))\bigr),
+\end{equation}
+where $\lambda_n \geq 0$ controls the opponent-shaping strength.
+\end{definition}
+
+
+\subsection{Bias absorption and annealed convergence}
+
+\begin{lemma}[Bias absorption]
+\label{lem:bias-absorption-ch3}
+The LOLA gradient signal decomposes as $\hat{v}_n^{\mathrm{LOLA}} = v(\pi_n) + U_n + b_n^{\mathrm{LOLA}}$, where:
+\begin{equation}
+\label{eq:lola-bias}
+    b_n^{\mathrm{LOLA}} = b_n + \lambda_n \cdot \mathrm{OS}(\pi_n), \qquad \|b_n^{\mathrm{LOLA}}\| \leq B_n + \lambda_n G =: B_n^{\mathrm{LOLA}}.
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+$\hat{v}_n + \lambda_n \mathrm{OS}(\pi_n) = v(\pi_n) + U_n + (b_n + \lambda_n \mathrm{OS}(\pi_n))$. By the triangle inequality: $\|b_n + \lambda_n \mathrm{OS}(\pi_n)\| \leq \|b_n\| + \lambda_n \|\mathrm{OS}(\pi_n)\| \leq B_n + \lambda_n G$.
+\end{proof}
+
+\begin{lemma}[Schedule compatibility]
+\label{lem:schedule-ch3}
+With $\lambda_n = \bar{\lambda}/(n+m)^r$ and $r > 1 - p$:
+\begin{equation}
+    B_n^{\mathrm{LOLA}} = \mathcal{O}(1/n^{\min(\ell_b, r)}), \qquad p + \min(\ell_b, r) > 1.
+\end{equation}
+Thus LOLA-PG satisfies the Giannou bias condition with modified exponent $\ell_b^{\mathrm{LOLA}} = \min(\ell_b, r)$.
+\end{lemma}
+
+\begin{theorem}[Convergence of annealed LOLA-PG]
+\label{thm:annealed-ch3}
+Under the hypotheses of Theorem~\ref{thm:giannou-ch3} with $\lambda_n = \bar{\lambda}/(n+m)^r$, $r > 1 - p$:
+\begin{enumerate}
+    \item $\mathbb{P}(\pi_n \to \pi^* \mid \pi_1 \in \mathcal{U}) \geq 1 - \delta$.
+    \item Under SOS: $\mathbb{E}[\|\pi_n - \pi^*\|^2 \mid \mathcal{E}] = \mathcal{O}(1/n^{q_{\mathrm{LOLA}}})$, where $q_{\mathrm{LOLA}} = \min(\ell_b, r, p - 2\ell_\sigma)$.
+    \item Choosing $r = p$ gives $q_{\mathrm{LOLA}} = q$ (same rate as standard PG).
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+By Lemma~\ref{lem:bias-absorption-ch3}, LOLA-PG is a special case of~\eqref{eq:pg-ch3} with gradient signal $\hat{v}_n^{\mathrm{LOLA}}$ satisfying the decomposition $v(\pi_n) + U_n + b_n^{\mathrm{LOLA}}$. The noise $U_n$ is unchanged (opponent shaping is $\mathcal{F}_n$-measurable). By Lemma~\ref{lem:schedule-ch3}, the modified bias satisfies Giannou's conditions. Therefore all hypotheses of Theorem~\ref{thm:giannou-ch3} hold with $\ell_b^{\mathrm{LOLA}} = \min(\ell_b, r)$, and the convergence follows with rate exponent $q_{\mathrm{LOLA}} = \min(\ell_b^{\mathrm{LOLA}}, p - 2\ell_\sigma) = \min(\ell_b, r, p - 2\ell_\sigma)$.
+
+For part~(3): setting $r = p$ gives $\ell_b^{\mathrm{LOLA}} = \min(\ell_b, p) = p$ (since $\ell_b \geq p$ for REINFORCE), so $q_{\mathrm{LOLA}} = \min(p, p - 2\ell_\sigma) = p - 2\ell_\sigma = q$.
+\end{proof}
+
+
+\subsection{Basin of attraction enlargement}
+
+This is the deeper result. We analyse the local structure of the LOLA gradient field near $\pi^*$.
+
+\begin{lemma}[Linearisation of LOLA gradient]
+\label{lem:linearisation}
+Near $\pi^*$, the LOLA gradient field admits the expansion:
+\begin{equation}
+    v^{\mathrm{LOLA}}(\pi) = v(\pi) + \lambda \cdot \mathrm{OS}(\pi) \approx \bigl(\operatorname{Jac}_v(\pi^*) + \lambda H(\pi^*)\bigr)(\pi - \pi^*) + \mathcal{O}(\|\pi - \pi^*\|^2),
+\end{equation}
+where $H(\pi^*) = \nabla_\pi \mathrm{OS}(\pi)\big|_{\pi = \pi^*}$ is the \emph{opponent-shaping Hessian}.
+\end{lemma}
+
+\begin{proof}
+Taylor-expand $v(\pi) = \operatorname{Jac}_v(\pi^*)(\pi - \pi^*) + \mathcal{O}(\|\pi - \pi^*\|^2)$ (since $v(\pi^*) = 0$ at Nash by FOS). Similarly, $\mathrm{OS}(\pi) = \mathrm{OS}(\pi^*) + H(\pi^*)(\pi - \pi^*) + \mathcal{O}(\|\pi - \pi^*\|^2)$. Since $\mathrm{OS}(\pi^*) = 0$ (Lemma~\ref{lem:os-properties}(b)), summing gives the result.
+\end{proof}
+
+Decompose $\operatorname{Jac}_v(\pi^*) = S + A$ into symmetric ($S$) and antisymmetric ($A$) parts. The SOS condition~\eqref{eq:sos-ch3} requires $S \preceq -\mu I$.
+
+\begin{definition}[Spectral reinforcement]
+\label{def:spectral-ch3}
+The opponent-shaping Hessian $H$ is \emph{spectrally reinforcing} if its symmetric part $S_H = (H + H^\top)/2$ is negative semi-definite. Write $\mu_H = -\lambda_{\max}(S_H) \geq 0$.
+\end{definition}
+
+\begin{theorem}[Basin of attraction enlargement]
+\label{thm:basin-ch3}
+If $H(\pi^*)$ is spectrally reinforcing with $\mu_H > 0$, then LOLA-PG with constant $\lambda > 0$ satisfies the SOS condition with improved parameter:
+\begin{equation}
+\label{eq:mu-lola-ch3}
+\boxed{
+    \mu_{\mathrm{LOLA}} = \mu + \lambda \mu_H > \mu.
+}
+\end{equation}
+Consequently:
+\begin{enumerate}[label=(\alph*)]
+    \item The SOS ball radius satisfies $\varrho_{\mathrm{LOLA}} \geq \varrho_{\mathrm{std}}$;
+    \item The contraction factor improves: $(1 - 2\mu_{\mathrm{LOLA}} \gamma_n)$ vs.\ $(1 - 2\mu \gamma_n)$;
+    \item The convergence constant improves by factor $\mu / \mu_{\mathrm{LOLA}} < 1$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+For $\pi$ in the SOS ball, using the linearisation (Lemma~\ref{lem:linearisation}):
+\begin{align}
+    \langle v^{\mathrm{LOLA}}(\pi), \pi - \pi^* \rangle &= \langle v(\pi), \pi - \pi^* \rangle + \lambda \langle \mathrm{OS}(\pi), \pi - \pi^* \rangle \notag \\
+    &= (\pi - \pi^*)^\top \operatorname{Jac}_v(\pi^*)(\pi - \pi^*) + \lambda (\pi - \pi^*)^\top H(\pi^*)(\pi - \pi^*) + \mathcal{O}(\|\pi - \pi^*\|^3) \notag \\
+    &= (\pi - \pi^*)^\top (S + \lambda S_H)(\pi - \pi^*) + \mathcal{O}(\|\pi - \pi^*\|^3), \label{eq:lola-contraction}
+\end{align}
+where the antisymmetric parts $(A + \lambda A_H)$ vanish in the quadratic form. Since $S \preceq -\mu I$ and $S_H \preceq -\mu_H I$:
+\[
+    S + \lambda S_H \preceq -(\mu + \lambda \mu_H) I = -\mu_{\mathrm{LOLA}} I.
+\]
+Therefore $\langle v^{\mathrm{LOLA}}(\pi), \pi - \pi^* \rangle \leq -\mu_{\mathrm{LOLA}} \|\pi - \pi^*\|^2 + \mathcal{O}(\|\pi - \pi^*\|^3)$.
+
+For (a): the SOS ball $\mathcal{B}_{\mathrm{LOLA}} = \{\pi : \langle v^{\mathrm{LOLA}}(\pi), \pi - \pi^* \rangle < 0\}$ is determined by $\mu_{\mathrm{LOLA}} \|\pi - \pi^*\|^2 > \mathcal{O}(\|\pi - \pi^*\|^3)$, i.e., $\|\pi - \pi^*\| < c \cdot \mu_{\mathrm{LOLA}}$ for some constant $c$. Since $\mu_{\mathrm{LOLA}} > \mu$, we get $\varrho_{\mathrm{LOLA}} > \varrho_{\mathrm{std}}$.
+
+For (b) and (c): substituting $\mu_{\mathrm{LOLA}}$ for $\mu$ in the Lyapunov recursion~\eqref{eq:chung-input} improves the contraction factor and the constant in Chung's lemma.
+\end{proof}
+
+
+\begin{proposition}[Sufficient conditions for spectral reinforcement]
+\label{prop:sufficient-ch3}
+Spectral reinforcement ($\mu_H > 0$) holds in the following cases:
+\begin{enumerate}[label=(\alph*)]
+    \item \emph{Two-player zero-sum games}: the gradient Jacobian has a large antisymmetric component $A$ (rotation), and LOLA converts rotation into contraction.
+    \item \emph{Games with negative cross-Hessians}: $\partial^2 V_i / \partial \pi_i \partial \pi_j \prec 0$ (agents' interests are locally opposed).
+\end{enumerate}
+Spectral reinforcement does \emph{not} hold in potential games, where $A = 0$ and the dynamics are already purely contractive (confirmed experimentally in \S\ref{sec:exp-spectral}). This domain-dependence explains why LOLA-type methods have historically succeeded only in competitive settings.
+\end{proposition}
+
+\begin{remark}[Comparison with prior LOLA convergence results]
+\label{rem:lola-comparison}
+Several works have analysed variants of LOLA: Stable Opponent Shaping~\cite{letcher2019} guarantees convergence to stable fixed points but does not provide rates or basin enlargement in general stochastic games; COLA~\cite{willi2022cola} addresses inconsistency of simultaneous opponent-shaping but restricts to differentiable games; model-free opponent shaping~\cite{lu2022model} provides a practical algorithm but no convergence theory. None provides \emph{last-iterate Nash convergence with explicit rates} in general stochastic games. Theorem~\ref{thm:annealed-ch3} is, to our knowledge, the first such result.
+\end{remark}
+
+
+%% ========================================================================
+\section{Combined EW-LOLA-PG}
+\label{sec:combined}
+%% ========================================================================
+
+\begin{equation}
+\tag{EW-LOLA-PG}
+    \pi_{i,n+1} = \operatorname{proj}_{\Pi_i}\bigl(\pi_{i,n} + \gamma_n \cdot w_{i,n} \cdot (\hat{v}_{i,n} + \lambda_n \cdot \mathrm{OS}_i(\pi_n))\bigr).
+\end{equation}
+
+\begin{theorem}[Combined convergence]
+\label{thm:combined-ch3}
+Under annealed LOLA ($\lambda_n \to 0$) and evidence weighting, EW-LOLA-PG converges to SOS Nash with:
+\begin{enumerate}[label=(\roman*)]
+    \item $C_{\mathrm{combined}} = \frac{\operatorname{HM}(V)}{\operatorname{AM}(V)} \cdot C_{\mathrm{std}}$ \quad (variance improvement from EWPG),
+    \item $\mu_{\mathrm{LOLA}} = \mu + \lambda \mu_H$ \quad (basin enlargement from LOLA, with constant-$\lambda$ variant),
+    \item $q = \min(\ell_b, r, p - 2\ell_\sigma)$ \quad (same rate structure).
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+Evidence weighting modifies the noise term in the energy inequality (Lemma~\ref{lem:energy-ewpg-ch3}, Theorem~\ref{thm:am-hm-ch3}). Opponent shaping modifies the bias (Lemma~\ref{lem:bias-absorption-ch3}). In the Lyapunov recursion~\eqref{eq:Dbar-recursion}, noise and bias enter in \emph{separate} additive terms:
+\[
+    \bar{D}_{n+1} \leq (1 - 2\mu_w \gamma_n)\bar{D}_n + \underbrace{\gamma_n \|\Pi\| B_n^{\mathrm{LOLA}}}_{\text{bias (LOLA)}} + \underbrace{\gamma_n^2 C_2^w}_{\text{variance (EWPG)}}.
+\]
+Since the modifications act on different terms, they compose without interaction. The variance improvement and basin enlargement are orthogonal: the first reduces $C_2$, the second increases $\mu$.
+\end{proof}

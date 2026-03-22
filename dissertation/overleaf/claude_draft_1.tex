@@ -1,0 +1,69 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{wasysym}
+
+\title{theos}
+\author{Eugene Shcherbinin}
+\date{March 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{enumerate}
+    \item Let x be the statement "I exist". Cogito ergo Sum (Descartes), so x is true.
+    \item Let $\Omega$ be a set such that for any $x$, $x \in \Omega$. For example, 
+    \begin{itemize}
+        \item $\Omega \in \Omega$
+        \item $x \in \Omega$.
+    \end{itemize}
+    Note that this violates assumptions of classical logic.
+    
+    \item Let $w: \Omega \to T $ be a function that maps any element of $\Omega$ to an element of the set $ T =  \{1, 0, -1\} \subset\Omega$. $w$ is a function that indicates whethere  given $x$ is true, false, or indeterminate.
+
+    \item Let $W = \{x \in \Omega \ | \  w(x) = 1\}$. Let $O = \{x \in \Omega \ | \  w(x) = 0\}$, and let $S = \{x \in \Omega \ | \  w(x) = -1\}$. These sets are mutually exclusive and collectively exhaustive (Trinity).
+
+    \item Let $\Pi$ be the set of all logical statements (statements that are either true or false). $\Pi = W \cup S$.
+
+    \item $\mathbb{R}^n \subseteq \Pi \subseteq \Omega$.
+
+    \item (Universal Approximation Theorem). Given a function $f: \mathbb R ^ n \to \mathbb R ^ m$, $f \in \Omega$ such that $f$ is continuously differentiable (\textbf{check!}), f can be approximated via a single layer neural network $\hat f$ arbitrarily closely. Multilayer neural networks are isomorphic to a single layer neural network but are computationally more efficient.
+
+    \item There exists a bijection $\tau$ between $O$ and $\Pi$. Common sense since $O = \Omega \setminus \Pi$. Yin and yang.
+    
+    \item (Universal Pythagorean Representation Theorem, to prove formally) There exists a bijection between $\Pi$ and $\mathbb R^\infty$. (Note: we may need to use kernels here).
+        \begin{enumerate}
+          \item (Injection) If $\Pi$ can be spanned by a countably infinite set of axioms, the statement is tautological. Otherwise, some work needs to be done.
+          \item (Surjection) If $\Pi$ is finitely dimensional, we need to reduce the dimension of our space. If it is countable, the proof is elementary. If it is uncountably infinite, some extra work has to be put in.
+        \end{enumerate}
+
+        Since we proved that there is a function that is injective and surjective, the function is bijective and we are happy.
+
+    \item Let's define a loss function $\mathcal L: \mathbb R^n \times \mathbb R^n \to \mathbb R$. Let $\mathcal L$ be continuously differentiable.
+    
+    \item Let $\mathcal X \in O$ be the observed reality. Let $X = \tau(\mathcal X) \in \Pi$. Let $\phi: \Pi \to \mathcal R ^ m$ be an embedding and let $\mathbf X = \phi (X)$.
+    
+    \item Lets introduce a dependent variable $Y = f(\mathbf X) \in \mathbb R ^k$.
+    
+    \item Let $\hat f$ be a (neural net or GBM) approximation of $f$, and let $\hat Y = \hat f (\mathbf X)$.
+    
+    \item Thus, the loss function is $\mathcal L(Y, \hat Y) = \mathcal L(f(\mathbf X), \hat f (\mathbf X))$
+    
+    \item We need to separate the cases of one-time and repeated games. A repeated game cannot be reduced to a one-time game if the markov property doesnt hold and $\mathbb P(\mathcal X_{t+1}) \neq \mathbb P (\mathcal X_{t+1} | \mathcal X_t)$.
+    
+    \item The rest of my dissertation will focus on the (fixed point) case where the markovian property holds.
+    
+    \item Lets take a parametrisable $\hat f$ such as a neural network or a gradient boosting machine. Let $\hat f = \hat f _ \theta$ for some $\theta \in \mathbb R ^ l$
+    
+    \item Lets take a parametrisable embedding
+
+    \item Taking the gradient of $\mathcal L$ w.r.t. $\theta$ and applying product and chain rules repeatedly, we get 
+    \begin{align}
+      \nabla_\theta \mathcal L(Y, \hat Y) &= \nabla_\theta \mathcal L(f(\mathbf X), \hat f_\theta (\mathbf X)) \\  
+    \end{align}
+    
+\end{enumerate}
+
+\end{document}

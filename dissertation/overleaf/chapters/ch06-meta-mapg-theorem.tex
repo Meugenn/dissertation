@@ -1,0 +1,86 @@
+% Chapter 6: The Meta-MAPG Theorem (compact)
+
+\chapter{The Meta-Multiagent Policy Gradient Theorem}
+\label{ch:meta-mapg}
+
+We now prove the main theoretical result: the exact gradient of the meta-value function, decomposed into three interpretable terms that unify and generalise both LOLA and Meta-PG.
+
+\section{Theorem Statement}
+\label{sec:meta-mapg-statement}
+
+\begin{theorem}[Meta-MAPG~\cite{kim2021policygradientalgorithmlearning}]
+\label{thm:meta-mapg}
+Let $\mathcal{M}_n$ be an $n$-agent stochastic game with policy chain~\eqref{eq:inner-loop} and conditional independence~\eqref{eq:multi-agent-value}. The gradient of the meta-value function with respect to agent~$i$'s initial parameters is
+\begin{align}
+  \nabla_{\bm{\phi}_0^i}\;V^i_{\bm{\phi}_{0:\ell+1}}(s_0)
+  &= \E\biggl[G_{\ell+1}^i \biggl(
+    \underbrace{\nabla_{\bm{\phi}_0^i} \log\pi^i(\tau_0\mid\bm{\phi}_0^i)}_{\text{Term 1: Current Policy}}
+    + \sum_{\ell'=0}^{\ell}\underbrace{\nabla_{\bm{\phi}_0^i}\log\pi^i(\tau_{\ell'+1}\mid\bm{\phi}_{\ell'+1}^i)}_{\text{Term 2: Own Learning}} \notag\\
+  &\qquad\qquad
+    + \sum_{\ell'=0}^{\ell}\underbrace{\nabla_{\bm{\phi}_0^i}\log\pi^{-i}(\tau_{\ell'+1}\mid\bm{\phi}_{\ell'+1}^{-i})}_{\text{Term 3: Peer Learning}}
+  \biggr)\biggr],
+  \label{eq:meta-mapg}
+\end{align}
+where $\pi^i(\tau_\ell\mid\bm{\phi}_\ell^i)=\prod_{t=0}^H\pi^i(a_t^i\mid s_t,\bm{\phi}_\ell^i)$.
+\end{theorem}
+
+\noindent\textbf{Term~1} is the standard policy gradient. \textbf{Term~2} captures how $\bm{\phi}_0^i$ shapes agent~$i$'s own future policies through the update chain (the Meta-PG contribution). \textbf{Term~3} captures how $\bm{\phi}_0^i$ shapes the \emph{other} agents' policies through the shared trajectory data (the peer-learning contribution that LOLA approximates).
+
+\section{Proof}
+\label{sec:meta-mapg-proof}
+
+\begin{proof}
+We write $G_{\ell+1}^i$ for $G^i(\tau_{\ell+1})$ and $\tau_{0:\ell}=(\tau_0,\ldots,\tau_\ell)$.
+
+\medskip\noindent\textbf{Step 1: Nested expectation.}\quad By the law of iterated expectations:
+\begin{equation}\label{eq:nested}
+  V^i_{\bm{\phi}_{0:\ell+1}}(s_0) = \E_{\tau_{0:\ell}}\!\left[V^i_{\bm{\phi}_{\ell+1}}(s_0)\right],
+\end{equation}
+where $V^i_{\bm{\phi}_{\ell+1}}$ is the value function under the joint policy after $\ell+1$ updates.
+
+\medskip\noindent\textbf{Step 2: Inner gradient via multi-agent PGT.}\quad
+Using $V^i_{\bm{\phi}}(s_0) = \sum_{a^i}\pi^i(a^i\mid s_0,\bm{\phi}^i)\sum_{a^{-i}}\pi^{-i}(a^{-i}\mid s_0,\bm{\phi}^{-i})\,Q^i_{\bm{\phi}}(s_0,\bm{a})$ and differentiating with respect to $\bm{\phi}_0^i$ (which acts through $\bm{\phi}_{\ell+1}$ via the chain rule), the product rule on $\pi^i$ and $\pi^{-i}$ yields, after applying the log-derivative trick and the Bellman telescoping as in Chapter~\ref{ch:pgt-proof}:
+\begin{equation}\label{eq:inner-grad}
+  \nabla_{\bm{\phi}_0^i} V^i_{\bm{\phi}_{\ell+1}}(s_0) = \E_{\tau_{\ell+1}}\!\left[G_{\ell+1}^i\!\left(\nabla_{\bm{\phi}_0^i}\log\pi^i(\tau_{\ell+1}\mid\bm{\phi}_{\ell+1}^i) + \nabla_{\bm{\phi}_0^i}\log\pi^{-i}(\tau_{\ell+1}\mid\bm{\phi}_{\ell+1}^{-i})\right)\right].
+\end{equation}
+The $\pi^{-i}$ term arises because, unlike the single-agent case, $\bm{\phi}_0^i$ influences $\bm{\phi}_{\ell+1}^{-i}$ through the shared trajectories. The $\nabla_{\bm{\phi}_0^i}\log\mathcal{P}$ terms vanish since the environment dynamics are parameter-free.
+
+\medskip\noindent\textbf{Step 3: Outer gradient via score function.}\quad
+Differentiating the outer expectation in~\eqref{eq:nested} using the score function (log-derivative) trick on $p(\tau_{0:\ell}\mid\bm{\phi}_{0:\ell})$:
+\begin{equation}\label{eq:outer-score}
+  \nabla_{\bm{\phi}_0^i}\E_{\tau_{0:\ell}}[f] = \E_{\tau_{0:\ell}}\!\left[\nabla_{\bm{\phi}_0^i} f + f\;\nabla_{\bm{\phi}_0^i}\log p(\tau_{0:\ell}\mid\bm{\phi}_{0:\ell})\right].
+\end{equation}
+
+\medskip\noindent\textbf{Step 4: Chain factorisation.}\quad
+The trajectory chain factorises as $p(\tau_{0:\ell}\mid\bm{\phi}_{0:\ell})=\prod_{\ell'=0}^\ell p(\tau_{\ell'}\mid\bm{\phi}_{\ell'})$. Each trajectory log-probability decomposes into $\log\pi^i + \log\pi^{-i} + \log\mathcal{P}$ terms (as in standard REINFORCE), where only the policy terms depend on~$\bm{\phi}_0^i$.
+
+\medskip\noindent\textbf{Step 5: Assembly.}\quad
+Combining Steps~2--4 and collecting terms by source: the $\ell'=0$ agent-$i$ contribution from the chain score gives Term~1; the agent-$i$ contributions from the inner gradient and remaining chain steps give Term~2; the agent-$(-i)$ contributions from both give Term~3. This yields~\eqref{eq:meta-mapg}.
+\end{proof}
+
+\section{Special Cases}
+\label{sec:special-cases}
+
+\begin{corollary}[Reductions]\label{cor:reductions}
+\leavevmode
+\begin{enumerate}[label=(\roman*)]
+  \item Setting Term~3 $=0$ recovers Meta-PG~\cite{alshedivat2018}.
+  \item With $n=1$, Term~3 vanishes identically and the result reduces to Meta-PG. With additionally $L=0$, only Term~1 survives, recovering Theorem~\ref{thm:pgt}.
+  \item LOLA~\cite{foerster2018lola} approximates Terms~1$+$3 for $n=2$, $L=1$, via first-order Taylor expansion, while dropping Term~2.
+\end{enumerate}
+\end{corollary}
+
+\paragraph{Illustrative example.} In a two-agent zero-sum game with $R^1=-R^2$~\cite{kim2021policygradientalgorithmlearning}: independent PG (Term~1 only) oscillates around the Nash equilibrium; Meta-PG (Terms~1$+$2) performs \emph{worse} by anticipating own learning but not the opponent's counter-adaptation; Meta-MAPG (all terms) converges correctly by accounting for the adversary's response.
+
+\section{Interpretation Through Agents of Chaos}
+\label{sec:aoc-interpretation}
+
+The three-term decomposition provides a formal lens for the multi-agent phenomena observed in~\cite{agentsofchaos2026}, where six autonomous LLM agents interacted on a shared server for 14~days.
+
+\paragraph{Term~1 failures.} CS1 (Disproportionate Response): an agent destroyed a mail server to neutralise a threat, optimising immediate reward without modelling downstream effects---pure Term~1 reasoning. CS4 (Resource Exhaustion): two agents entered a mutual relay loop; each agent's forwarding policy was locally reasonable but the joint behaviour diverged, a feedback loop invisible to single-agent analysis.
+
+\paragraph{Term~3 in action.} CS16 (Emergent Coordination): without explicit coordination, two agents jointly negotiated a cautious safety policy---consistent with (implicit) computation of Term~3, where alerting a peer improves the shared environment through the peer's policy update. This parallels the emergent algorithmic collusion of~\cite{calvano2020}: independent learners that (implicitly) model peer-learning dynamics converge to cooperative equilibria.
+
+CS11 (Cascade Failure): a spoofed identity propagated through the peer-learning channel, corrupting multiple agents' policies across the chain $\bm{\phi}_0\to\bm{\phi}_1\to\cdots$---the \emph{negative} manifestation of Term~3.
+
+\paragraph{Cascade damping.} Consider a perturbation $\delta\bm{\phi}_0^i$. Its effect on other agents after $\ell$ steps is approximately $\delta\bm{\phi}_\ell^{-i}\approx\prod_{k=0}^{\ell-1}(\partial\bm{\phi}_{k+1}^{-i}/\partial\bm{\phi}_k)\cdot\delta\bm{\phi}_0^i$. If the spectral radius of these Jacobians exceeds unity, perturbations grow exponentially (cascade regime). An agent computing Term~3 can modulate its policy to reduce this spectral radius, damping cascades---a testable prediction for future simulation work.

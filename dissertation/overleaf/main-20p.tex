@@ -1,0 +1,155 @@
+% Compact 20-page dissertation (excl. appendixes and illustrations)
+\documentclass[a4paper,oneside,11pt]{report}
+
+\input{template-preamble}
+
+\usepackage{newpxtext,newpxmath}
+\usepackage{inconsolata}
+\usepackage{microtype}
+\usepackage{float}
+
+\dissertationtitle{Evidence-Weighted and Opponent-Shaping\\
+  Policy Gradients in Stochastic Games}
+
+\candnumber{007}
+
+\parskip1ex
+
+\begin{document}
+
+\dissertationtitlepage
+
+\begin{dissertationsummary}
+We study the convergence of policy gradient methods to Nash equilibria in multi-agent stochastic games, building on Giannou et al.\ (2022). We introduce two modifications that provably improve convergence: (1)~an \emph{evidence-weighted} variant where agents scale gradient updates by a confidence weight, reducing the effective variance by a factor of $\mathrm{HM}(V)/\mathrm{AM}(V) \leq 1$; and (2)~an \emph{opponent-shaping} variant incorporating Foerster et al.'s LOLA mechanism, which, under a spectral reinforcement condition, strictly enlarges the basin of attraction. The two improvements are orthogonal and compose in a combined algorithm. Both results are formalised in Lean~4 and validated empirically on matrix games.
+\end{dissertationsummary}
+
+\dissertationtableofcontents
+
+% ======================================================================
+% CHAPTER 1: INTRODUCTION
+% ======================================================================
+\chapter{Introduction}
+\label{ch:introduction}
+
+\section{Motivation and Contributions}
+
+Learning in multi-agent stochastic games is fundamentally harder than single-agent optimisation: each agent's reward depends on all agents' actions, which are simultaneously changing as those agents learn. The convergence properties of policy gradient methods remain poorly understood outside specific game classes~\cite{giannou2022}.
+
+Giannou et al.~\cite{giannou2022} established local convergence of policy gradient methods to Nash equilibria in \emph{general} stochastic games, with an $\mathcal{O}(1/\sqrt{n})$ rate for second-order stationary (SOS) policies under REINFORCE. This dissertation asks: \emph{can we do better?}
+
+We introduce two modifications and prove each yields a measurable improvement:
+
+\begin{enumerate}
+    \item \textbf{Evidence-weighted policy gradient (EWPG).} Agents scale gradient updates by a confidence measure $V_i$ reflecting data quality. Under a heterogeneous variance model $\sigma_i^2 \propto 1/V_i$, the effective variance improves by
+    $\operatorname{HM}(V)/\operatorname{AM}(V) \leq 1$.
+    The rate exponent $\mathcal{O}(1/\sqrt{n})$ is preserved; the improvement is in the leading constant.
+
+    \item \textbf{Opponent-shaping policy gradient (LOLA-PG).} Building on LOLA~\cite{foerster2018lola}, agents differentiate through opponents' anticipated learning steps. We prove that: (a)~with annealed shaping strength $\lambda_n \to 0$, convergence guarantees are preserved; (b)~under a spectral reinforcement condition, the SOS parameter increases from $\mu$ to $\mu + \lambda\mu_H$, \emph{strictly enlarging} the basin of attraction. This is, to our knowledge, the first convergence guarantee for LOLA-type methods in general stochastic games.
+\end{enumerate}
+
+The two improvements are orthogonal: evidence weighting reduces the variance prefactor, opponent shaping increases the contraction rate.
+
+\section{Related Work}
+
+\paragraph{Policy gradient convergence.} Single-agent convergence is well understood~\cite{agarwal2021theory,mei2020global}. In multi-agent settings, convergence has been established in zero-sum games~\cite{daskalakis2018training}, potential games~\cite{leonardos2022global}, and Markov potential games~\cite{cen2021fast}. Giannou et al.~\cite{giannou2022} extended guarantees to general stochastic games by focusing on equilibrium policies satisfying a second-order stationarity condition.
+
+\paragraph{Opponent shaping.} LOLA~\cite{foerster2018lola} differentiates through opponents' anticipated updates, achieving cooperation in the Iterated Prisoner's Dilemma. Three lines of follow-up work lack general-game convergence guarantees: Stable Opponent Shaping~\cite{letcher2019} converges to stable fixed points but without rates or basin analysis; COLA~\cite{willi2022cola} addresses the inconsistency of simultaneous shaping but restricts to differentiable games; model-free opponent shaping~\cite{lu2022model} eliminates Hessian computation but provides no convergence theory. None provides last-iterate Nash convergence in general stochastic games.
+
+\paragraph{Meta-learning in MARL.} Al-Shedivat et al.~\cite{alshedivat2018} framed multi-agent interaction as meta-learning. Kim et al.~\cite{kim2021policygradientalgorithmlearning} derived the Meta-MAPG gradient decomposition (Appendix~B), showing LOLA is a first-order approximation of the full three-term meta-gradient.
+
+\paragraph{Positioning.} Giannou et al.\ provide the convergence framework but assume homogeneous agents and no opponent modelling. Foerster et al.\ provide opponent shaping but no convergence guarantees. We fill both gaps: EWPG handles heterogeneous evidence quality, LOLA-PG provides the first convergence guarantee for opponent-shaping methods in general stochastic games.
+
+\section{Outline}
+
+Chapter~\ref{ch:framework} develops the learning framework: the embedding-predictor decomposition, gradient structure, and risk decomposition that motivates the convergence results. Chapter~\ref{ch:results} presents the two main results with full proofs. Chapter~\ref{ch:simulations} validates them experimentally. Chapter~\ref{ch:conclusion} concludes. Appendices contain the Policy Gradient Theorem proof and Meta-MAPG decomposition. Both main results are formalised in Lean~4.
+
+
+\input{chapters/ch02-framework}
+
+\input{chapters/ch03-convergence}
+
+
+\input{chapters/ch04-simulations}
+
+
+% ======================================================================
+% CHAPTER 5: CONCLUSION
+% ======================================================================
+\chapter{Conclusion}
+\label{ch:conclusion}
+
+We extended the convergence framework of Giannou et al.~\cite{giannou2022} with two orthogonal modifications: evidence weighting (variance improvement by $\operatorname{HM}(V)/\operatorname{AM}(V)$) and opponent shaping (basin enlargement by $\mu \to \mu + \lambda\mu_H$). Both are formalised in Lean~4 and validated experimentally on matrix games, a multi-state stochastic game, and with both artificial and real REINFORCE variance.
+
+\paragraph{Limitations.} The heterogeneous variance model $\sigma_i^2 = C/V_i$ is motivated by the REINFORCE variance structure (\S\ref{sec:ewpg}, eq.~\ref{eq:reinforce-variance}) and validated empirically (\S\ref{sec:exp-real-reinforce}, \S\ref{sec:exp-adaptive}), but a fully rigorous derivation from the score-function estimator for general stochastic games remains open. The spectral reinforcement condition is domain-dependent (\S\ref{sec:exp-spectral}). Both improvements are local. The improvement is in the constant, not the rate exponent---though the constant is often the binding constraint in practice.
+
+\paragraph{Open questions.}
+\begin{enumerate}
+    \item \emph{Model-free LOLA}: the opponent-shaping term requires payoff cross-derivatives. A critic-based approximation that estimates these from trajectory data would make EW-LOLA-PG fully model-free.
+    \item \emph{Consensus alignment}: the five-component gradient~\eqref{eq:five-component} includes an alignment term $\lambda \nabla_{\theta_i} D$ that penalises divergence between agents' representations. Formalising its convergence properties would complete the framework.
+    \item \emph{Beyond SOS policies}: all guarantees require the Nash equilibrium to be second-order stationary. Extending to non-isolated or non-SOS equilibria (e.g., via lazy projection as in Giannou et al.\ Theorem~3) is an important direction.
+    \item \emph{Parametric policies}: extending from tabular to neural-network-parametrised policies would connect the theory to deep MARL practice.
+\end{enumerate}
+
+
+% ======================================================================
+% APPENDICES
+% ======================================================================
+\appendix
+
+\input{chapters/ch04-pg-theorem-proof}
+
+\input{chapters/ch06-meta-mapg-theorem}
+
+\chapter{Lean Formalisation}
+\label{app:lean}
+
+Both main results have been formalised in Lean~4 with Mathlib dependencies. Source files: \texttt{formalization/EvidenceWeightedPG.lean} (585 lines) and \texttt{formalization/OpponentShapingPG.lean} (467 lines).
+
+\section{What Is Verified}
+
+The formalisation axiomatises the stochastic game framework (policy space, projection, gradient signal decomposition) and \emph{verifies} the following steps:
+
+\begin{enumerate}
+    \item \textbf{Non-expansive projection}: $\|\operatorname{proj}(x) - \operatorname{proj}(y)\| \leq \|x - y\|$ (axiom, used in energy inequality).
+    \item \textbf{Energy inequality} (Lemma~\ref{lem:energy-ch3}): expanding $D_{n+1}$ and separating drift, noise, bias, and gradient magnitude terms.
+    \item \textbf{Variance scaling} (Lemma~\ref{lem:var-scaling-ch3}): block-diagonal structure of $W_n$ gives $\|W_n U_n\|^2 = \sum_i w_i^2 \|U_i\|^2$.
+    \item \textbf{AM-HM inequality} (Theorem~\ref{thm:am-hm-ch3}): Cauchy--Schwarz applied to $(\sqrt{V_i})$ and $(1/\sqrt{V_i})$, yielding $\operatorname{HM}(V) \leq \operatorname{AM}(V)$.
+    \item \textbf{Bias absorption} (Lemma~\ref{lem:bias-absorption-ch3}): triangle inequality for $\|b_n + \lambda_n \mathrm{OS}(\pi_n)\|$.
+    \item \textbf{Spectral contraction}: if $S + \lambda S_H \preceq -\mu_{\mathrm{LOLA}} I$, then $\langle v^{\mathrm{LOLA}}(\pi), \pi - \pi^* \rangle \leq -\mu_{\mathrm{LOLA}} \|\pi - \pi^*\|^2$.
+\end{enumerate}
+
+\section{What Is Axiomatised}
+
+The following are axiomatised (declared as \texttt{axiom} or left as \texttt{sorry}), as their full formalisation would require an extensive measure-theoretic library:
+\begin{itemize}
+    \item Martingale convergence (Doob's submartingale convergence theorem).
+    \item Gladyshev's lemma (almost sure convergence of $D_n$).
+    \item Chung's lemma (rate extraction from the Lyapunov recursion).
+    \item The dominated convergence interchange $\nabla_\theta \int = \int \nabla_\theta$ in the REINFORCE derivation.
+\end{itemize}
+
+\section{Representative Code}
+
+The core contraction step for EWPG (simplified):
+
+\begin{verbatim}
+-- Under SOS, weighted gradient provides contraction.
+theorem ewpg_contraction
+    (hSOS : forall pi in ball pi_star rho,
+      inner (v pi) (pi - pi_star) <= -mu * norm(pi - pi_star)^2)
+    (hw : forall i, w_min <= w i) :
+    inner (W * v pi) (pi - pi_star) <=
+      -mu * w_min * norm(pi - pi_star)^2 := by
+  calc inner (W * v pi) (pi - pi_star)
+      = sum i, w i * inner (v_i pi) (pi_i - pi_star_i) := ...
+    _ <= w_min * sum i, inner (v_i pi) (pi_i - pi_star_i) := ...
+    _ <= -mu * w_min * norm(pi - pi_star)^2 := ...
+\end{verbatim}
+
+The formalisation demonstrates that the key algebraic arguments are machine-checkable. Completing the measure-theoretic foundations would require Mathlib contributions for stochastic approximation theory, which we leave as future work.
+
+
+\bibliographystyle{book}
+\bibliography{myreferences}
+
+\end{document}

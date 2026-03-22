@@ -1,0 +1,302 @@
+% Chapter 9: The Cooperative Steering Game
+% Status: DRAFT — Original contribution
+
+\chapter{The Cooperative Framework: Mechanism Design as Meta-Learning}
+\label{ch:cooperative}
+
+The preceding chapters developed two complementary accounts of multi-agent learning: the Meta-MAPG theorem (Chapter~\ref{ch:meta-mapg}), which shows how individually rational agents can account for each other's learning dynamics, and the Team Policy Gradient theorem (Chapter~\ref{ch:team-pg}), which treats collective behaviour as an irreducibly joint object. Both, however, take the game as \emph{given}---the reward functions, information structures, and constraints are fixed, and the agents optimise within this fixed environment.
+
+This chapter asks the prior question: \emph{who designs the game?} We introduce an \emph{orchestrator}---a principal who defines the incentives, structure, and constraints of the multi-agent interaction---and show that the orchestrator's problem of designing a game in which selfish agents achieve socially optimal outcomes is \emph{formally equivalent} to the meta-learning outer loop of Meta-MAPG. The central result of this chapter, the Mechanism Design--Meta-Learning Isomorphism (Theorem~\ref{thm:md-ml-iso}), establishes this equivalence precisely. The framework synthesises classical mechanism design theory~\cite{hurwicz1972,myerson1981,maskin1999} with the multi-agent reinforcement learning developed in earlier chapters, and provides the theoretical foundation for the LLM steering application of Chapter~\ref{ch:llm-steering}.
+
+\section{From Independent Agents to Designed Systems}
+\label{sec:independent-to-designed}
+
+\subsection{The Welfare Gap}
+\label{subsec:welfare-gap}
+
+Consider the $n$-agent stochastic game $\mathcal{M}_n$ of Definition~\ref{def:stochastic-game}. Each agent~$i$ maximises its own value function $V^i_{\bm{\phi}}(s_0)$, and the resulting Nash equilibrium $\bm{\phi}^{NE}$ satisfies the condition that no agent can unilaterally improve its expected return.
+
+The \emph{utilitarian social welfare} at a joint parameter profile $\bm{\phi}$ is
+\begin{equation}\label{eq:social-welfare}
+  W(\bm{\phi}) = \sum_{i\in\mathcal{I}} V^i_{\bm{\phi}}(s_0).
+\end{equation}
+More generally, one may consider weighted welfare $W(\bm{\phi})=\sum_i \lambda_i V^i_{\bm{\phi}}(s_0)$ or egalitarian welfare $W(\bm{\phi})=\min_i V^i_{\bm{\phi}}(s_0)$; we focus on the utilitarian case for concreteness.
+
+The \emph{welfare gap} measures the inefficiency of the Nash equilibrium:
+\begin{equation}\label{eq:welfare-gap}
+  \Delta_W = \max_{\bm{\phi}} W(\bm{\phi}) - W(\bm{\phi}^{NE}).
+\end{equation}
+When $\Delta_W > 0$, there exists a joint parameter profile that makes the aggregate better off than the equilibrium outcome, but no individual agent has an incentive to move there unilaterally. This is the multi-agent analogue of the Prisoner's Dilemma: individually rational behaviour leads to a collectively suboptimal outcome.
+
+The \emph{Price of Anarchy}~\cite{koutsoupias1999} is the ratio form of this gap:
+\begin{equation}\label{eq:poa}
+  \text{PoA}(\mathcal{M}_n) = \frac{\max_{\bm{\phi}} W(\bm{\phi})}{\min_{\text{NE } \bm{\phi}^*} W(\bm{\phi}^*)}\,.
+\end{equation}
+A Price of Anarchy of 1 means the equilibrium is already socially optimal; values greater than 1 measure the degree of inefficiency. The orchestrator's task is to transform the game so that its Price of Anarchy is as close to 1 as possible.
+
+\subsection{The Orchestrator}
+\label{subsec:orchestrator}
+
+We now introduce a distinguished player---the \emph{orchestrator}---who acts \emph{before} the agents and \emph{above} them in the following sense: the orchestrator does not participate in the game but designs the rules under which the game is played. The orchestrator chooses a \emph{design} $d$ from a design space $\mathcal{D}$, producing a \emph{designed game} $\mathcal{M}_n(d)$ in which the agents then interact.
+
+\begin{definition}[Orchestrated game]\label{def:orchestrated-game}
+An \emph{orchestrated game} is a tuple
+\begin{equation}\label{eq:orchestrated-game}
+  \mathcal{G}_{\mathrm{orch}} = \langle \mathcal{M}_n,\; \mathcal{D},\; \Omega,\; \mathcal{C} \rangle,
+\end{equation}
+where:
+\begin{enumerate}[label=(\roman*)]
+  \item $\mathcal{M}_n$ is the underlying $n$-agent stochastic game (Definition~\ref{def:stochastic-game});
+  \item $\mathcal{D}$ is the \emph{design space}---the set of mechanisms available to the orchestrator;
+  \item $\Omega\colon \mathcal{D} \to \mathbb{R}$ is the orchestrator's \emph{objective}, typically the social welfare at the induced equilibrium: $\Omega(d) = W(\bm{\phi}^{NE}(d))$;
+  \item $\mathcal{C} \subseteq \mathcal{D}$ is the set of \emph{feasible designs}, encoding constraints such as incentive compatibility, individual rationality, and budget balance.
+\end{enumerate}
+The orchestrator solves
+\begin{equation}\label{eq:orchestrator-problem}
+  d^* = \arg\max_{d \in \mathcal{C}} \;\Omega(d).
+\end{equation}
+\end{definition}
+
+The orchestrator is a \emph{Stackelberg leader}~\cite{vonStackelberg1934}: it moves first (choosing~$d$), and the agents best-respond (playing the Nash equilibrium of $\mathcal{M}_n(d)$). This hierarchical structure---design, then play---is the defining feature of mechanism design, and distinguishes it from the ``flat'' multi-agent setting of the preceding chapters where all agents are on equal footing.
+
+\subsection{Design Instruments}
+\label{subsec:design-instruments}
+
+The orchestrator's design space $\mathcal{D}$ may include several instruments, each of which modifies a different aspect of the agents' game.
+
+\paragraph{Reward shaping.} The orchestrator transforms agent~$i$'s reward:
+\begin{equation}\label{eq:reward-shaping}
+  \tilde{\mathcal{R}}^i(s, \bm{a}, s') = \mathcal{R}^i(s, \bm{a}, s') + \Phi^i(s, \bm{a}, s'),
+\end{equation}
+where $\Phi^i$ is a shaping function that modifies incentives without changing the underlying task. When $\Phi^i(s,\bm{a},s')=\gamma\,\phi(s') - \phi(s)$ for some potential function~$\phi$, the shaping is \emph{potential-based} in the sense of~\cite{ng1999policy}. In the single-agent case, potential-based shaping preserves the optimal policy; in the multi-agent case, it can additionally align individual incentives with social welfare, as we shall show.
+
+\paragraph{Information design.} The orchestrator controls what agents observe, replacing the full state with a signal:
+\begin{equation}\label{eq:information-design}
+  o^i = \sigma^i(s, d),
+\end{equation}
+where $\sigma^i\colon \mathcal{S}\times\mathcal{D} \to \mathcal{O}^i$ is a \emph{signal structure} chosen by the orchestrator. By revealing or concealing information, the orchestrator shapes agents' beliefs and hence their actions~\cite{kamenica2011}. In the LLM steering application, the hypernetwork controls what context the LLM receives---this is information design.
+
+\paragraph{Action constraints.} The orchestrator restricts the available actions:
+\begin{equation}\label{eq:action-constraints}
+  \mathcal{A}^i(d) \subseteq \mathcal{A}^i,
+\end{equation}
+removing actions that are individually tempting but socially harmful. In the LLM setting, this corresponds to output filters and constitutional constraints.
+
+\paragraph{Communication protocols.} The orchestrator designs the timing and content of inter-agent communication, determining the message space~$\mathcal{M}^i$ and the rules for message exchange.
+
+\section{The Mechanism Design--Meta-Learning Isomorphism}
+\label{sec:md-ml-iso}
+
+We now state and prove the central result of this chapter: that the orchestrator's mechanism design problem is formally equivalent to the meta-learning outer loop of Meta-MAPG.
+
+\subsection{Setup}
+\label{subsec:iso-setup}
+
+Consider a parametrised family of stochastic games $\{\mathcal{M}_n(\psi)\}_{\psi\in\Psi}$, where $\psi$ indexes the design. Each agent~$i$ runs $L$ steps of gradient ascent on its own value function (the \emph{inner loop}):
+\begin{equation}\label{eq:inner-loop-designed}
+  \bm{\phi}^i_{\ell+1} = \bm{\phi}^i_\ell + \alpha\,\nabla_{\bm{\phi}^i} V^i_{\bm{\phi}_\ell}(s_0;\psi),
+\end{equation}
+where $V^i_{\bm{\phi}}(s_0;\psi)$ is agent~$i$'s value function in the game $\mathcal{M}_n(\psi)$. The orchestrator (the \emph{outer loop}) chooses $\psi$ to maximise social welfare after $L$ inner-loop steps:
+\begin{equation}\label{eq:meta-objective}
+  J_{\mathrm{meta}}(\psi) = W\!\left(\bm{\phi}_L(\psi)\right) = \sum_{i\in\mathcal{I}} V^i_{\bm{\phi}_L}(s_0;\psi),
+\end{equation}
+where $\bm{\phi}_L(\psi)$ denotes the joint parameters after $L$ updates in the game $\mathcal{M}_n(\psi)$.
+
+\subsection{The Isomorphism}
+\label{subsec:isomorphism}
+
+\begin{theorem}[Mechanism Design--Meta-Learning Isomorphism]\label{thm:md-ml-iso}
+The orchestrator's mechanism design problem and the meta-learning outer loop are related as follows.
+
+\medskip\noindent\emph{(i) Embedding (Mechanism Design $\hookrightarrow$ Meta-Learning).} Every mechanism design problem with design space~$\mathcal{D}$ and rational agents can be formulated as a meta-learning problem with meta-parameters $\psi\in\Psi$, inner-loop dynamics~\eqref{eq:inner-loop-designed}, and meta-objective~\eqref{eq:meta-objective}, where:
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{ll}
+\textbf{Mechanism Design} & \textbf{Meta-Learning} \\
+\hline
+Design $d \in \mathcal{D}$ & Meta-parameters $\psi \in \Psi$ \\
+Agent type $\theta^i$ (preferences) & Initial parameters $\bm{\phi}_0^i$ \\
+Best response $a^i(d, \theta^i)$ & Inner-loop output $\bm{\phi}_L^i(\psi, \bm{\phi}_0^i)$ \\
+Incentive compatibility & Optimality of gradient ascent for each agent \\
+Implementation: NE $=$ social optimum & Meta-objective: $J_{\mathrm{meta}}(\psi^*) = \max W$ \\
+\end{tabular}
+\end{center}
+
+\medskip\noindent\emph{(ii) Embedding (Meta-Learning $\hookrightarrow$ Mechanism Design).} Every meta-learning problem with parametrised inner-loop agents can be formulated as a mechanism design problem, where:
+\begin{itemize}
+  \item The meta-parameters $\psi$ define a mechanism (game rules);
+  \item Each agent's gradient update is its ``message'' (revealed preference);
+  \item The composition of $L$ gradient steps is the outcome function $g$;
+  \item Gradient ascent on own utility is a dominant-strategy truthful report.
+\end{itemize}
+
+\medskip\noindent\emph{(iii) Gradient correspondence.} Under both embeddings, the orchestrator's gradient is:
+\begin{equation}\label{eq:mechanism-gradient}
+  \nabla_\psi J_{\mathrm{meta}}(\psi) = \sum_{i\in\mathcal{I}} \underbrace{\frac{\partial V^i_{\bm{\phi}_L}}{\partial \bm{\phi}_L^i}}_{\text{marginal value}} \cdot \underbrace{\frac{d\bm{\phi}_L^i}{d\psi}}_{\text{implementation gradient}},
+\end{equation}
+where the first factor is the marginal value of the outcome to agent~$i$ (the ``virtual valuation'' in mechanism design) and the second factor is the sensitivity of the equilibrium to the design (the ``implementation gradient'').
+\end{theorem}
+
+\begin{proof}
+\emph{(i) MD $\hookrightarrow$ ML.}\quad Given a mechanism design problem with design space~$\mathcal{D}$, rational agents with types $\theta^i$, and social choice function~$f$, we construct the meta-learning problem as follows. Set $\Psi = \mathcal{D}$. For each design $\psi = d$, define the game $\mathcal{M}_n(\psi)$ with rewards $\tilde{\mathcal{R}}^i(\cdot;\psi)$ as specified by the mechanism. The initial parameters $\bm{\phi}_0^i$ encode agent~$i$'s type $\theta^i$. The inner loop~\eqref{eq:inner-loop-designed} implements the agents' best-response dynamics: after $L$ gradient steps, $\bm{\phi}_L^i$ approximates the best response of agent~$i$ to the designed game. Incentive compatibility---the requirement that agents find it optimal to participate truthfully---is satisfied automatically because each gradient step maximises agent~$i$'s own value function $V^i$. The meta-objective~\eqref{eq:meta-objective} is the orchestrator's objective evaluated at the equilibrium outcome.
+
+\emph{(ii) ML $\hookrightarrow$ MD.}\quad Given a meta-learning problem, we construct the mechanism as follows. The message space for agent~$i$ is its sequence of gradient updates $\{\nabla_{\bm{\phi}^i} V^i_{\bm{\phi}_\ell}\}_{\ell=0}^{L-1}$---these are the ``reports'' through which agent~$i$ communicates its preferences. The outcome function is the composition of $L$ gradient steps: $g(\text{gradients}) = \bm{\phi}_L$. This is a \emph{direct mechanism} in which the agent's report is its gradient, and truthfulness is guaranteed by the structure of gradient ascent: reporting a gradient other than $\nabla_{\bm{\phi}^i} V^i$ would decrease agent~$i$'s own value, making truthful reporting a dominant strategy.
+
+\emph{(iii) Gradient correspondence.}\quad By the chain rule applied to~\eqref{eq:meta-objective}:
+\[
+  \nabla_\psi J_{\mathrm{meta}}(\psi) = \nabla_\psi W(\bm{\phi}_L(\psi)) = \sum_i \frac{\partial W}{\partial \bm{\phi}_L^i}\cdot\frac{d\bm{\phi}_L^i}{d\psi}.
+\]
+Since $W = \sum_i V^i$ and $\partial W / \partial \bm{\phi}_L^i = \partial V^i / \partial \bm{\phi}_L^i + \sum_{j\neq i}\partial V^j / \partial \bm{\phi}_L^i$, the first factor captures both the direct effect on agent~$i$'s value and the externality on other agents. The chain $d\bm{\phi}_L^i/d\psi$ differentiates through $L$ inner-loop steps, connecting to the Meta-MAPG gradient structure~\eqref{eq:meta-mapg}. In mechanism design terms, $\partial V^i / \partial \bm{\phi}_L^i$ is the virtual valuation (marginal willingness to pay for a better outcome), and $d\bm{\phi}_L^i/d\psi$ is the implementation sensitivity (how the equilibrium responds to the mechanism).
+\end{proof}
+
+\subsection{Interpretation: Truthfulness Through Gradient Structure}
+\label{subsec:truthfulness}
+
+A key insight of Theorem~\ref{thm:md-ml-iso} is that the meta-learning framework provides \emph{automatic incentive compatibility}. In classical mechanism design, the central challenge is to ensure that agents reveal their true preferences (the \emph{revelation principle}~\cite{myerson1981}). Mechanisms must be carefully designed so that truthful reporting is optimal---a constraint that severely limits the class of implementable social choice functions (cf.\ the Gibbard--Satterthwaite theorem~\cite{gibbard1973}).
+
+In the meta-learning framework, truthfulness is not a constraint to be imposed but a \emph{consequence of the gradient structure}. Each agent's ``report'' is its gradient $\nabla_{\bm{\phi}^i} V^i$---the direction of steepest ascent of its own value function. Misreporting this gradient (e.g., updating in a direction that does not maximise $V^i$) would decrease the agent's own value, making it strictly suboptimal regardless of what other agents do. This is a \emph{dominant-strategy} truthfulness guarantee, stronger than the Bayesian incentive compatibility typically required in mechanism design.
+
+The analogy can be made precise: the revelation principle states that for any mechanism implementing a social choice function, there exists an equivalent direct mechanism where agents truthfully report their types. In the meta-learning setting, the ``direct mechanism'' is simply gradient ascent on own utility---agents truthfully report their local preference landscape by following the gradient. The meta-learner then uses these truthful reports (through the chain rule) to compute the mechanism design gradient~\eqref{eq:mechanism-gradient}.
+
+\section{Sufficient Conditions for Pareto Optimality}
+\label{sec:pareto-conditions}
+
+When can the orchestrator succeed? We establish conditions under which the designed game has a Nash equilibrium that maximises social welfare.
+
+\subsection{Potential Games and Reward Shaping}
+\label{subsec:potential-games}
+
+\begin{definition}[Potential game~\cite{monderer1996}]\label{def:potential-game}
+A game is a \emph{potential game} if there exists a function $\Phi\colon\bm{\mathcal{A}}\to\mathbb{R}$ such that for every agent~$i$, every action profile $\bm{a}$, and every alternative action $b^i$:
+\begin{equation}\label{eq:potential-condition}
+  u^i(a^i,\bm{a}^{-i}) - u^i(b^i,\bm{a}^{-i}) = \Phi(a^i,\bm{a}^{-i}) - \Phi(b^i,\bm{a}^{-i}).
+\end{equation}
+\end{definition}
+
+The fundamental property of potential games is that every Nash equilibrium is a local maximum of~$\Phi$, and the global maximum of~$\Phi$ is a Nash equilibrium. If $\Phi = W$ (the potential equals the social welfare), then \emph{every Nash equilibrium maximises social welfare}---the welfare gap vanishes.
+
+\begin{theorem}[Pareto optimality via reward shaping]\label{thm:pareto-shaping}
+Let $\mathcal{M}_n$ be an $n$-agent stochastic game with rewards $\{\mathcal{R}^i\}$. Suppose the orchestrator's design space $\mathcal{D}$ includes reward shaping functions~\eqref{eq:reward-shaping} with $\Phi^i$ unrestricted. Then there exists a shaping $\{\Phi^{i*}\}$ such that the shaped game is a potential game with potential $W = \sum_i V^i$, and consequently:
+\begin{enumerate}[label=(\roman*)]
+  \item Every Nash equilibrium of the shaped game maximises the social welfare $W$.
+  \item The inner-loop gradient dynamics~\eqref{eq:inner-loop-designed} converge to a social welfare maximum (under standard step-size conditions).
+  \item The welfare gap of the shaped game satisfies $\Delta_W = 0$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+We construct the shaping explicitly. For each agent~$i$, define
+\begin{equation}\label{eq:welfare-shaping}
+  \Phi^{i*}(s, \bm{a}, s') = \sum_{j \neq i} \mathcal{R}^j(s, \bm{a}, s'),
+\end{equation}
+so that the shaped reward is $\tilde{\mathcal{R}}^i = \mathcal{R}^i + \sum_{j\neq i}\mathcal{R}^j = \sum_j \mathcal{R}^j$. Every agent now optimises the same objective---the sum of all rewards---making the game a \emph{team game} (also called a \emph{common-interest game}). The common reward $\sum_j \mathcal{R}^j$ serves as the potential function, and the potential condition~\eqref{eq:potential-condition} is satisfied trivially. Part~(i) follows from the Monderer--Shapley characterisation~\cite{monderer1996}. Part~(ii) follows from the fact that gradient ascent on a potential game converges to a Nash equilibrium, which by~(i) maximises welfare. Part~(iii) is immediate from~(i).
+\end{proof}
+
+\paragraph{Remark.} The shaping~\eqref{eq:welfare-shaping} is the most direct way to align incentives: simply add everyone else's reward to each agent's objective. This is the multi-agent analogue of internalising externalities in welfare economics. However, it requires the orchestrator to have access to all agents' reward functions and the ability to communicate aggregate signals---assumptions that may not hold in all settings. The connection to VCG transfers in classical mechanism design~\cite{vickrey1961,clarke1971,groves1973} is direct: VCG payments are precisely the reward-shaping functions that align individual incentives with social welfare in the mechanism design setting with quasi-linear utilities.
+
+\subsection{The Alignment Tax}
+\label{subsec:alignment-tax}
+
+Does the orchestrator's intervention make agents worse off individually? Define the \emph{alignment tax} for agent~$i$:
+\begin{equation}\label{eq:alignment-tax}
+  T^i(\psi) = V^i_{\bm{\phi}^{NE}}(s_0) - V^i_{\bm{\phi}^{NE}(\psi)}(s_0;\psi),
+\end{equation}
+where $V^i_{\bm{\phi}^{NE}}$ is agent~$i$'s value at the undesigned Nash equilibrium and $V^i_{\bm{\phi}^{NE}(\psi)}$ is its value at the designed equilibrium. When $T^i > 0$, agent~$i$ is individually worse off in the designed system; when $T^i \leq 0$, the design is individually beneficial.
+
+\begin{proposition}[Pareto improvement $\Longrightarrow$ voluntary participation]\label{prop:voluntary}
+If the designed equilibrium Pareto dominates the undesigned equilibrium---i.e., $V^i_{\bm{\phi}^{NE}(\psi)}(s_0;\psi) \geq V^i_{\bm{\phi}^{NE}}(s_0)$ for all~$i$ with strict inequality for at least one~$i$---then $T^i \leq 0$ for all~$i$, and agents voluntarily participate in the designed system.
+\end{proposition}
+
+This is the ideal scenario: the orchestrator restructures incentives so that cooperation \emph{is} the selfish choice. No agent needs to sacrifice for the collective good; the design makes collective good emerge from self-interest. The orchestrator's art lies in finding such Pareto-improving designs.
+
+\paragraph{Connection to individual rationality in mechanism design.} The condition $T^i \leq 0$ is the \emph{individual rationality} (IR) constraint of classical mechanism design: agents must be at least as well off participating in the mechanism as in their outside option (here, the undesigned equilibrium). Proposition~\ref{prop:voluntary} shows that when the designed equilibrium Pareto dominates the undesigned one, IR is satisfied automatically.
+
+\section{The Meta-Gradient of the Orchestrator}
+\label{sec:orchestrator-gradient}
+
+The orchestrator optimises~\eqref{eq:orchestrator-problem} by gradient ascent on the meta-objective:
+\begin{equation}\label{eq:orchestrator-update}
+  \psi_{m+1} = \psi_m + \beta\,\nabla_\psi J_{\mathrm{meta}}(\psi_m),
+\end{equation}
+where $\beta > 0$ is the orchestrator's step size. By Theorem~\ref{thm:md-ml-iso}(iii), the gradient has the form
+\begin{equation}\label{eq:orchestrator-gradient-expanded}
+  \nabla_\psi J_{\mathrm{meta}}(\psi) = \sum_i \frac{\partial V^i_{\bm{\phi}_L}}{\partial \bm{\phi}_L^i}\cdot\frac{d\bm{\phi}_L^i}{d\psi} + \sum_i \sum_{j \neq i} \frac{\partial V^j_{\bm{\phi}_L}}{\partial \bm{\phi}_L^i}\cdot\frac{d\bm{\phi}_L^i}{d\psi}.
+\end{equation}
+The first sum captures how changing the design affects each agent's own value through its own policy (the ``private'' effect). The second sum captures the \emph{externalities}: how changing agent~$i$'s policy (via the design) affects agent~$j$'s value. The orchestrator is the only entity that internalises these externalities---individual agents, by definition, do not.
+
+\paragraph{Three terms revisited.} Expanding $d\bm{\phi}_L^i/d\psi$ through the chain of inner-loop updates connects directly to the three terms of Meta-MAPG (Theorem~\ref{thm:meta-mapg}):
+\begin{enumerate}[label=(\roman*)]
+  \item \textbf{Term 1} (current policy): The direct effect of the design on the agents' current policies. In mechanism design terms: the immediate incentive effect.
+  \item \textbf{Term 2} (own learning): How the design shapes each agent's future self-improvement. In mechanism design terms: the dynamic incentive compatibility---ensuring that the mechanism remains incentive-compatible as agents learn.
+  \item \textbf{Term 3} (peer learning): How the design shapes the cross-agent learning dynamics. In mechanism design terms: the externality internalisation---the orchestrator accounts for how each agent's learning affects all other agents.
+\end{enumerate}
+
+This decomposition reveals that the meta-learning gradient~\eqref{eq:meta-mapg} is, from the orchestrator's perspective, a \emph{mechanism design gradient}: it tells the orchestrator how to adjust the game rules to improve the equilibrium outcome, accounting for both the direct effects and the learning dynamics of all agents.
+
+\section{Connection to Team Policy Gradients}
+\label{sec:team-connection}
+
+The cooperative framework and the team policy framework (Chapter~\ref{ch:team-pg}) address complementary aspects of collective optimality.
+
+Chapter~\ref{ch:team-pg} takes the team as given and asks: \emph{how should a team optimise?} The Team PGT (Theorem~\ref{thm:team-pgt}) provides the gradient for a joint policy, decomposed into expert and routing components. The question is computational: given a team objective, what is the learning rule?
+
+This chapter asks: \emph{how should the team be designed?} The orchestrator creates conditions under which selfish agents behave as if they were a cooperative team. The question is structural: what mechanism makes self-interest coincide with team interest?
+
+The synthesis is as follows. Let $\pi_{\mathrm{team}}(\psi)$ denote the team policy that emerges when agents play the designed game $\mathcal{M}_n(\psi)$. The orchestrator's problem~\eqref{eq:orchestrator-problem} can be written:
+\begin{equation}\label{eq:orchestrator-team}
+  \psi^* = \arg\max_\psi J\!\left(\pi_{\mathrm{team}}(\psi)\right),
+\end{equation}
+and the gradient $\nabla_\psi J$ passes through both the team PGT decomposition (expert and routing gradients) and the mechanism design structure (reward shaping and information design). The orchestrator simultaneously optimises \emph{what the team does} (through the experts) and \emph{how it coordinates} (through the routing), using the mechanism design gradient to steer both.
+
+In the MoE language of Chapter~\ref{ch:team-pg}: the orchestrator designs the game so that the Nash equilibrium of selfish agents is an MoE team policy whose expert specialisation and routing coordination maximise social welfare. The experts specialise because the reward shaping makes specialisation individually optimal; the routing coordinates because the information design makes coordination individually optimal.
+
+\section{Application: The LLM Cooperative Steering Game}
+\label{sec:llm-coop-steering}
+
+We now apply the cooperative framework to the LLM steering setting, making precise the connection between mechanism design, meta-learning, and the architecture of steerable language models.
+
+\subsection{The Players}
+\label{subsec:llm-players}
+
+The cooperative steering game has three levels:
+\begin{enumerate}[label=(\roman*)]
+  \item \textbf{The orchestrator} (system designer): Defines the reward model, the safety constraints, and the training protocol. Moves first, before deployment.
+  \item \textbf{Agent 1: The frozen LLM.} Its ``self-interest'' is next-token prediction---maximising the likelihood of the training distribution. It does not adapt at deployment time; its parameters are fixed.
+  \item \textbf{Agent 2: The hypernetwork/steering network.} Its ``self-interest'' is minimising its own loss function (e.g., matching human preferences). It adapts at deployment time, modifying the context or activations of the LLM.
+\end{enumerate}
+
+\subsection{The Mechanism}
+\label{subsec:llm-mechanism}
+
+The orchestrator's design instruments map to concrete architectural choices:
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{ll}
+\textbf{Design Instrument} & \textbf{LLM Architecture} \\
+\hline
+Reward shaping $\Phi^i$ & RLHF reward model \\
+Information design $\sigma^i$ & Context window, system prompt \\
+Action constraints $\mathcal{A}^i(d)$ & Output filters, constitutional rules \\
+Communication protocol & Prompt template, conversation structure \\
+\end{tabular}
+\end{center}
+
+The hypernetwork's steering signal $z_t$ is the mechanism in action: it processes the conversation history $h_t$ (the agents' ``reported types'') and produces a context modification (the ``outcome'') that shapes the LLM's behaviour. The LLM best-responds to the modified context---its self-interest (next-token prediction on the modified input) aligns with the orchestrator's objective (helpful, harmless, honest output) precisely because the mechanism (RLHF + steering) was designed to achieve this alignment.
+
+\subsection{Meta-Learning as Mechanism Training}
+\label{subsec:mechanism-training}
+
+The meta-learning outer loop that trains the hypernetwork IS the orchestrator solving the mechanism design problem:
+\begin{equation}\label{eq:llm-meta-objective}
+  \psi^* = \arg\max_\psi\; \E_{h \sim \mathcal{H}}\!\left[W\!\left(\text{LLM}(h;\; z_\psi(h)),\; z_\psi(h)\right)\right],
+\end{equation}
+where $W$ evaluates the quality of the joint output (LLM response + steering signal) according to the orchestrator's criteria (helpfulness, harmlessness, honesty), and $z_\psi(h)$ is the hypernetwork's steering signal given history~$h$.
+
+By Theorem~\ref{thm:md-ml-iso}, this is equivalent to: designing a mechanism (the steering function $z$) such that when the LLM and hypernetwork each act in their own self-interest, the joint output maximises social welfare (alignment). The meta-gradient~\eqref{eq:mechanism-gradient} tells the orchestrator how to adjust the steering function to improve alignment, accounting for both the LLM's frozen response dynamics and the hypernetwork's adaptive learning.
+
+\section{Discussion}
+\label{sec:ch9-discussion}
+
+\paragraph{From anarchy to design.} The progression of this dissertation mirrors a progression from anarchy to design. Chapter~\ref{ch:policy-methods} considers a single agent optimising alone (no game). Chapter~\ref{ch:meta-learning} introduces multiple agents in a given game (anarchy---no orchestrator). Chapter~\ref{ch:meta-mapg} shows how agents can account for each other's learning (partial cooperation through awareness). Chapter~\ref{ch:team-pg} models collective behaviour as a joint object (team---but who designs the team?). This chapter introduces the orchestrator who designs the game itself, closing the circle: the question is no longer ``how do agents act in a game?'' but ``what game should be played?''
+
+\paragraph{Implications for AI safety.} The cooperative framework provides a formal account of the AI alignment problem: the system designer (orchestrator) must design a mechanism (training protocol, reward model, safety constraints) such that when AI agents (LLMs, tool-using agents) act in their own self-interest (maximise their training objective), the resulting behaviour aligns with human values (social welfare). The Pareto optimality conditions (Theorem~\ref{thm:pareto-shaping}) provide sufficient conditions for when this is achievable, and the meta-gradient~\eqref{eq:orchestrator-gradient-expanded} provides the learning rule for the orchestrator. The key insight is that alignment is not a constraint imposed on agents from outside, but a property of the mechanism that can be \emph{designed} so that alignment is the individually rational choice.

@@ -1,0 +1,326 @@
+% updated to include natbib bibliography style
+% by Bernhard von Stengel 11 February 2021
+% First we set up the style for the dissertation. Do not change this!
+\documentclass[a4paper,oneside,11pt]{report}
+
+% Now we load the preamble, which sets up most we need for the dissertation.
+\input{template-preamble}
+
+% Bernhard von Stengel 11 Feb 2021: try these fonts (the first is Times,
+% needs less space, the second Palatino)
+% \usepackage{newtxtext,newtxmath}
+\usepackage{newpxtext,newpxmath}
+\usepackage{inconsolata} % a nice fixed-width font for programming, \texttt
+\usepackage{roboto} % a nice sans serif font
+\usepackage{microtype}
+
+% --- ADDED BY GEMINI ---
+\usepackage{float}
+% -----------------------
+
+% The next lines set the title and candidate number. Fill in your own!
+\dissertationtitle{Template for\\
+  the Dissertation in Mathematics}
+
+\candnumber{007}
+
+% vertical skip between paragraphs. Do not use manual skips
+% in the document, only central parameters like this!
+\parskip1ex
+
+% Now the document begins.
+\begin{document}
+
+% First the titlepage.
+
+\dissertationtitlepage
+
+% You are required to write a short summary.
+
+\begin{dissertationsummary}
+
+\end{dissertationsummary}
+
+% Next we set up the table of contents page. This will update
+% automagically, so you do not need to change anything. You may need to run
+% pdflatex two or three times before it all updates correctly though.
+
+\dissertationtableofcontents
+
+% Finally, we can get started 
+
+\chapter{Introduction}
+
+\chapter{Literature Review}
+
+\begin{enumerate}
+    \item Base it on 
+        \begin{enumerate}
+            \item Lit review of Kim Et Al
+            \item Lit review of mateusz for hypersteer
+            \item Lit review of cooperative games (stackelberg games in part)
+        \end{enumerate}
+\end{enumerate}
+
+\chapter{Policy Methods in Reinforcement Learning}
+\label{ch:policy-methods}
+
+In this chapter, we will study the classic setup of reinforcement learning in a single agent environment. We introduce the foundational framework and notation used throughout the dissertation. The chapter will start with the definition of Markov Decision Process, formalising agents behaviour in stochastic environments. Then, we move towards a particular approach to RL called \textit{Policy Gradient methods} that directly parametrise the agent's policy. The content of the chapter is drawn heavily from Chapters 3 and 13 of \cite{sutton2018rl}. 
+
+\section{Markov Decision Processes}
+\label{sec:mdp}
+
+A \textit{Markov Decision Process} (MDP) is a formalisation of a stochastic (random) state and agents reactions to it. An MDP is a tuple 
+  \begin{equation}
+    \label{eq:mdp-tuple}
+    M = \langle \mathcal{S},\, \mathcal{A},\, \mathcal{P},\, \mathcal{R},\, \gamma \rangle,
+  \end{equation}
+
+\chapter{AMBITIOUS: Convergence Guarantees}
+
+\chapter{Large Language Models Steering}
+\begin{enumerate}
+    \item Rewrite the st310 project
+\end{enumerate}
+\chapter{Cooperative Steering Game}
+\begin{enumerate}
+    \item Rewrite the whitepaper
+\end{enumerate}
+\chapter{Simulations}
+\begin{enumerate}
+    \item Repeat simulations of ST310 and \cite{kim2021policygradientalgorithmlearning}
+\end{enumerate}
+
+\chapter{Conclusion}
+
+
+
+% \chapter{Multi Agents Mathematical Setup}
+
+% \chapter{Gradient Policy Theorem}
+% \chapter{Validating the assumptions}
+% \section{Reading \cite{sutton2018rl}   } 
+% \subsection{Ch.3}
+
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{sutton3.png}
+%     \caption{curious - simple approach from the econ point of view, but easily modifiable}
+%     \label{fig:placeholder1}
+% \end{figure}
+
+% Episodic - where there is a natural stopping point
+% Continuing tasks - $T = \infty$
+
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{sutton3-2.png}
+%     \caption{Enter Caption}
+%     \label{fig:placeholder2}
+% \end{figure}
+
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{sutton 3-3.png}
+%     \caption{Enter Caption}
+%     \label{fig:placeholder3}
+% \end{figure}
+
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{sutton 3-4}
+%     \caption{Enter Caption}
+%     \label{fig:placeholder4}
+% \end{figure}
+
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{sutton 3-5}
+%     \caption{Enter Caption}
+%     \label{fig:placeholder5}
+% \end{figure}
+
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{sutton3-6}
+%     \caption{important notation - to define in my thesis}
+%     \label{fig:placeholder6}
+% \end{figure}
+
+
+% \newpage
+% \subsection{Ch. 13 - Gradient Policy Methods}
+% Gradient Policy methods - as opposed to the standard methods that learn action value estimates, we are learning a parametrized policy $\pi (a |s, \bm \theta) = \Pr \{A_t = a | S_t = s, \bm \theta _t = \bm \theta\}$ that gives us a probability distribution of actions given the state. \textit{I think Neural Nets fall under this category since this is precisely what we learn} If in addition we learn a value function $\hat v(s, \bf {w} )$ $\bf w$, then we call this an actor - critic method. Goal - maximise a performance measure $J(\bm \theta)$. Update is $\bm \theta_{t+1} = \bm \theta_t + \alpha \widehat{\nabla J(\bm \theta_t)}$
+
+% \textbf{Policy requirements}
+% \begin{itemize}
+%     \item $\pi$ differentiable
+%     \item In practice, $\pi$ never deterministic
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{image.png}
+%     \caption{This seems v similar to normal neural nets}
+%     \label{fig:placeholder7}
+% \end{figure}
+% \end{itemize}
+% One advantage is that allows you to approach a deterministic policy, as opposed to the $\epsilon$-greedy action selection that always has randomness. RL allows for a variety of underlying models for the prefernce
+% With significant function approximation, best approximate policy may be stochastic - policy method can approximate well, action value ones can't
+% Another advantage is that policy may be much easier to approximate. In other problems, action value may be easier to approximate
+% Last advantage - injecting a prior
+% \subsection{Policy Gradient Theorem}
+% Theoretical advantage - continuous policy parametrization change smoothly as a function of the learned parameter.; action probs can change dramatically. Thus stronger convergence guarantees. Continuity of policy allows approximate gradient ascent
+% Episodic and continuous cases differ but can be adjusted with similar notation. \textit{The paper is for the discrete case - maybe I can adjust for the continuous and simulate?} 
+% This theorem - direct case (as opposed to meta learning from the paper). I can do the review of meta learning advantage over normal.
+% Practically, why do we add discounting?
+% State distribution depends on the policy and is usually unknown. Estimate of performance - answered by PGT. \textbf{Doesn't involve derivative of the state distribution}
+% \[
+% \nabla J(\bm \theta) \propto \sum_s\mu(s) \sum_a q_\pi (s, a) \nabla_{\bm \theta} \pi(a|s, \bm \theta)
+% \]
+% \textit{What is the "episodic" case?}
+% What is q? Wait, what is $\mu$ and $\eta$ here as well?  Look exercise 3.16
+
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{image.png}
+%     \caption{}
+%     \label{fig:placeholder8}
+% \end{figure}
+% K, so go down to ch. 3 and read up.
+
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{image.png}
+%     % Note: You were missing a caption/label here, but [H] still works
+% \end{figure}
+
+
+% \chapter{\cite{kim2021policygradientalgorithmlearning} Reading notes}
+
+% \section{Questions}
+% \section{To-do s}
+% $\square$ Introduce Q in the proof
+% \section{Notes}
+% \begin{itemize}
+%     \item Give overview as policy gradient space (\cite{wei2018multiagentsoftqlearning}) -> meta policy gradients 
+%     \item I bet a good section on the basic setup of reinforcement learning 
+% \end{itemize}
+% \section{Random notes}
+% Equilibrium learning - agents learning policies to satisfy game-theoretic equilibrium conditions. Most are based on off-policy q learning
+% Inner loop - adapting policy based on parameters - i.e. gradient update
+% \section{Mathematical setup}
+
+% n-agent game is a tuple 
+% $\mI$
+% $M_n = \langle \mI, \mS, \mA, \mP, \mR, \gamma \rangle$ where $I$ - n agents,
+% $\mA = \times_{i\in \mI} \mA_i$ - set of action spaces for each agent (at each stage?) 
+
+% $\gamma$ is the discount factor
+
+% $\mS$ is game dependent and can be, for example, set of all past actions on a game. In general, it describes the state of the game at the current step (what happened before and is now)
+
+% Reward function of the agent $r_t^i = \mathcal{R}^i (s_t, \bm a_t)$ depends on the current state of the game and actions of all agents at a current step. At the end of an \textbf{episode} (what is it?) agent collects a trajectory - the path of all actions, states and rewards, and parameters of all policies
+
+% $\phi_i$ - parametrization of the policy of agent
+
+% $G^i(\tau_{\phi_0}) = \sum_{t=0}^{H} \gamma^t r_t^i$ is  simply discounted return
+
+% $\tau_\phi:= (s_0, \bm a_0, \bm r-0, \dots, \bm r_H)$
+% Definition from 
+
+% % --- MODIFIED TO [H] ---
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.75\linewidth]{wen2019.jpg}
+%     \caption{\cite{wen2019probabilisticrecursivereasoningmultiagent}}
+%     \label{fig:placeholder9}
+% \end{figure}
+% \section{Markovian chain}
+% Each agent updates its policy via \textbf{Markovian update function} after every $\bm K$ trajectories. After the initial time period, update policy to maximise value function - \textit{expected, discounted future reward given} $s_0$
+
+% In this paper, you have
+% \begin{enumerate}
+%     \item sequential dependency of policies ($\phi_1$ depends on $\phi_0$, and so on
+%     \item You can control non-stationarity by adjusting $H$ - episode horizon and $K$ - number of trajectories collected
+% \end{enumerate} 
+
+% \section{Meta Learning}
+% In classical RL, the value function uses evaluates future reward given the current policy of the agent, providing $V_{\phi_i}$. In contrast, the meta-value function evaluates reward given current policy and \textbf{future updates that will stem from the current policy}. It explicitly models the learning process (update of parameters) itself
+% What is special about meta learning is that the
+
+
+% \section{Proof}
+
+% The proof depends crucially on \cite{wei2018multiagentsoftqlearning} that introduces softmax Q-learning used in 
+% the proof 
+
+% Assumption: 
+% - Conditional independence
+
+% Intrdocues $Q_{\phi_{l+1}}$ - what is Q. What is state - action value?
+
+% Steps of the proof:
+% \begin{enumerate}
+%     \item Introduce Q - state action value
+%     \begin{enumerate}
+%         \item Use the assumption of the conditional independence between agents actions \cite{wen2019probabilisticrecursivereasoningmultiagent}, 
+%         \begin{equation}
+%         \pi(a^i, a^{-i} | s) = \pi(a^i|s) \pi(a^{-i}|s) \label{eq:wen_cond_ind}
+%         \end{equation}
+%         \item Crucial - what is Q func? Does it have to do with Q learning?
+%         \begin{enumerate}
+%             \item State-action Q function is a standard object in reinforcement learning (refer to \cite{sutton1998reinforcement}   - the details I can expand on here).
+%             \[
+%             Q_{\phi_{l+1}}^i(s_0, a_0) = \E_{p(\tau_{\phi_{l+1}|s_0, a_0, \phi_{l+1}})}\left[ G^i(\tau) \right] = \E_{p(\tau_{\phi_{l+1}|s_0, a_0, \phi_{l+1}})}\left[\sum_{t=0}^{H} \gamma^t r_t^i \right] 
+%             \]
+%                 Extra step (potentially give more details on why / what 
+%                 Note (possibly introduce more formal definition of the action space and parameters, like where $a_0$ lies)
+%                 \begin{align*}
+%                 V_{\phi_{l+1}}^i (s_0) &= \sum_{a \in \mA}\pi(\b a | s, \b \phi_0) Q_{\phi_{l+1}}^i (s_0, \b a_0) \\
+%                 &\stackrel{\eqref{eq:wen_cond_ind}}{=}  \sum_{a \in \mA}\pi( a_i | s, \b \phi_0)\pi(\b a_{-i} | s, \b \phi_0) Q_{\phi_{l+1}}^i (s_0, \b a_0) \\
+%                 &=\sum \sum
+%                 \end{align*}
+%                 \item The question is still to exactly connect Q and V via the definitions given in the paper (or in my own way!)
+             
+%             \item Different from standard Q learning
+%         \end{enumerate}
+%     \end{enumerate}
+%     \item Take gradient wrt to $\phi_0^{-i}$ of the inner term of the value fuction
+%     \begin{enumerate}
+%         \item Uses the inner loop - what is it?
+%         \item Inner loop optimization until 
+%     \end{enumerate}
+%     \item Use this to find which terms depend on $\phi_0^i$
+% \end{enumerate}
+
+
+% \chapter{Simulations}
+
+
+% \chapter{Conclusion}
+
+% The end
+
+% Time to add the bibliography
+% Bernhard von Stengel suggests Bibliography at the very end
+% \bibliographystyle{plain}
+% \bibliography{template-BibFile}
+
+% If you have one or more appendices, this is where they should go. 
+% The next command changes the normal \chapter{...} command.
+
+\appendix
+
+
+\bibliographystyle{book}
+\bibliography{myreferences}
+
+\end{document}

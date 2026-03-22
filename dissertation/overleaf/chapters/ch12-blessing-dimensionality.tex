@@ -1,0 +1,121 @@
+\chapter{The Blessing of Dimensionality for Policy Gradients}\label{ch:blessing}
+
+The REINFORCE gradient estimator suffers from variance that appears to scale linearly with the action space dimension $d = |\mathcal{A}|$. This chapter shows this is a \emph{curse of dimensionality illusion}: when the optimal policy is $k$-sparse, high-dimensional concentration phenomena reduce the effective sample complexity to $O(k \log(d/k))$ --- sub-linear in $d$.
+
+
+\section{The Apparent Curse}
+
+The REINFORCE estimator $\hat{g}(\tau) = R(\tau) \cdot \nabla_\theta \log \pi_\theta(\tau) \in \mathbb{R}^d$ has variance:
+\begin{equation}\label{eq:reinforce-var}
+    \text{Var}(\hat{g}) = \sum_{a=1}^d \pi(a) \cdot \left(\frac{\nabla \pi(a)}{\pi(a)}\right)^2 \cdot R(a)^2 - \|\nabla J\|^2.
+\end{equation}
+
+For a low-probability action $a$ with $\pi(a) = \epsilon \to 0$, the contribution scales as $R(a)^2/\epsilon \to \infty$. This is the \emph{inverse probability weighting} problem. Expanding $\mathcal{A}$ by adding many low-probability actions makes this sum grow linearly in $d$.
+
+The parallel to classical ML overfitting is precise: too many actions relative to informative samples, just as overfitting arises from too many parameters relative to data.
+
+
+\section{Concentration of the Gradient}
+
+\begin{theorem}[Gradient concentration]\label{thm:grad-concentration}
+Let $\hat{g}_1, \ldots, \hat{g}_M$ be i.i.d.\ REINFORCE samples in $\mathbb{R}^d$ with covariance $\Sigma = \text{Cov}(\hat{g})$ having eigenvalues $\lambda_1 \geq \cdots \geq \lambda_d$. Then:
+\begin{equation}
+    \Pr\!\left(\left\|\frac{1}{M}\sum_{m=1}^M \hat{g}_m - \nabla J\right\| \leq \epsilon\right) \geq 1 - \delta
+\end{equation}
+provided $M \geq C \cdot \frac{\text{tr}(\Sigma)}{\epsilon^2} \cdot \log(d/\delta)$.
+\end{theorem}
+
+The key quantity is $\text{tr}(\Sigma) = \sum_i \lambda_i$, not $d \cdot \lambda_{\max}$. When the eigenspectrum decays rapidly, $\text{tr}(\Sigma) \ll d \cdot \lambda_1$.
+
+
+\section{Effective Dimension}
+
+\begin{definition}[Effective dimension]\label{def:deff}
+The effective dimension of the policy gradient is:
+\begin{equation}
+    d_{\text{eff}} = \frac{\text{tr}(\Sigma)}{\lambda_{\max}(\Sigma)} = \frac{\sum_{i=1}^d \lambda_i}{\lambda_1}.
+\end{equation}
+\end{definition}
+
+If only $k$ eigenvalues are significant, $d_{\text{eff}} \approx k$. The sample complexity becomes:
+\begin{equation}
+    M \geq O\!\left(\frac{k}{\epsilon^2} \log d\right)
+    \quad \text{(sub-linear in $d$)}.
+\end{equation}
+
+
+\section{Sparse Recovery via Compressed Sensing}
+
+\begin{theorem}[Sparse gradient recovery]\label{thm:sparse-recovery}
+Let $\pi^*$ be $k$-sparse. Under the restricted isometry property (Cand\`es--Tao, 2005), the true gradient direction can be recovered from $M$ REINFORCE samples provided:
+\begin{equation}
+    M \geq C \cdot k \log(d/k).
+\end{equation}
+Going from 10 to 10,000 actions costs an extra factor of $\log(1000) \approx 7$, not $1000$.
+\end{theorem}
+
+
+\section{Effective Evidence Weight}
+
+The EW-PG framework uses $w_i = V_{\min}/V_i$ where $V_i$ sums variance over all $d$ dimensions. But most variance is noise in unused action dimensions.
+
+\begin{definition}[Effective evidence weight]
+\begin{equation}
+    V_i^{\text{eff}} = \frac{d_{\text{eff},i}}{d} \cdot V_i, \qquad
+    w_i^{\text{eff}} = \frac{V_{\min}^{\text{eff}}}{V_i^{\text{eff}}}.
+\end{equation}
+\end{definition}
+
+\begin{theorem}[Effective evidence improvement]
+For an agent with $k$-sparse optimal policy in a $d$-action game:
+\begin{equation}
+    \frac{w_i^{\text{eff}}}{w_i} = \frac{d}{d_{\text{eff},i}} \geq \frac{d}{k}.
+\end{equation}
+For $d = 10{,}000$, $k = 5$: the effective weight is $2{,}000\times$ larger.
+\end{theorem}
+
+
+\section{L1-Regularised Evidence-Weighted PG}
+
+Combining L1 regularisation (sparsity) with evidence weighting (adaptive steps) and effective dimension (accurate evidence):
+
+\begin{equation}
+    \pi_{i,n+1} = \proj_\Pi\bigl(\text{prox}_{\mu_n \|\cdot\|_1}\bigl(\pi_{i,n} + \gamma_n w_i^{\text{eff}} \hat{v}_{i,n}\bigr)\bigr)
+\end{equation}
+
+where $\text{prox}_{\mu\|\cdot\|_1}(x)_a = \text{sign}(x_a)\max(|x_a| - \mu, 0)$ is the soft-thresholding operator, and $\mu_n = \mu_0/(1 + n/n_0)$ is annealed to allow late-stage exploration.
+
+\subsection{The Natural Curriculum}
+
+The interaction creates a self-organising curriculum:
+
+\begin{enumerate}
+    \item \textbf{Early training} ($\mu_n$ large): L1 drives extreme sparsity ($k \approx 1$--$2$), $d_{\text{eff}} \approx k$, high effective evidence, fast convergence.
+    \item \textbf{Mid training} ($\mu_n$ decreasing): Policy support grows, but evidence improves simultaneously. Agent explores new actions with calibrated confidence.
+    \item \textbf{Late training} ($\mu_n \approx 0$): No sparsity constraint, full action support available. Converges to true Nash.
+\end{enumerate}
+
+\begin{theorem}[Convergence of Sparse-EW-PG]\label{thm:sparse-ewpg}
+With $k$-sparse Nash, L1 schedule $\mu_n = \mu_0/(1+n/n_0)$, and effective evidence weights:
+\begin{equation}
+    \E[\|\pi_n - \pi^*\|^2] = O\!\left(\frac{\text{HM}(V^{\text{eff}})}{\text{AM}(V^{\text{eff}})} \cdot \frac{k \log(d/k)}{n^q}\right).
+\end{equation}
+The constant is sub-linear in $d$.
+\end{theorem}
+
+\subsection{Entropy vs L1}
+
+Entropy regularisation ($-\beta H(\pi)$) encourages \emph{uniform} exploration: $d_{\text{eff}} \approx d$, no blessing. L1 encourages \emph{focused} exploration: $d_{\text{eff}} \approx k$, full blessing. In high dimensions, L1 is strictly better for the variance problem.
+
+
+\section{Communication and Sparsity}
+
+Sparse policies are inherently more communicable (Chapter~\ref{ch:cooperative-comm}). Transmitting a $k$-sparse policy over a $d$-action space requires $O(k \log d)$ bits (identify which actions + their probabilities) vs $O(d)$ for a dense policy. The self-knowledge bottleneck is relaxed by a factor of $d/(k \log d)$.
+
+The ``vibing'' spectrum acquires precise meaning:
+\begin{itemize}
+    \item \textbf{Vibing}: Policy effectively dense, $d_{\text{eff}} \approx d$. Poor self-knowledge, poor communication.
+    \item \textbf{Articulate}: Policy sparse, $d_{\text{eff}} \approx k$. Good self-knowledge, good communication.
+\end{itemize}
+
+L1 regularisation drives agents from vibing toward articulation. The blessing ensures this transition costs $O(\log d)$, not $O(d)$.

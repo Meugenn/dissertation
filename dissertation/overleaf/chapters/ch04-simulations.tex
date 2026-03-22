@@ -1,0 +1,239 @@
+\chapter{Experiments}
+\label{ch:simulations}
+
+This chapter validates the theoretical results of Chapter~\ref{ch:results} through six experiments of increasing depth. We verify the AM-HM variance improvement (\S\ref{sec:exp-variance}), the convergence rate and constant (\S\ref{sec:exp-rate}), the spectral reinforcement condition (\S\ref{sec:exp-spectral}), the basin of attraction enlargement (\S\ref{sec:exp-basin}), the combined EW-LOLA-PG algorithm (\S\ref{sec:exp-combined}), and the robustness across game types (\S\ref{sec:exp-multigame}).
+
+All experiments use the REINFORCE gradient estimator (Algorithm~1 of~\cite{giannou2022}) with step size $\gamma_n = \gamma/(n+m)^p$, $\gamma = 0.5$, $m = 10$, $p = 0.75$, and simplex projection. Source code is at \texttt{simulations/}.
+
+
+%% ========================================================================
+\section{Gradient Variance Measurement}
+\label{sec:exp-variance}
+%% ========================================================================
+
+We first test Theorem~\ref{thm:am-hm-ch3} by directly measuring gradient variance.
+
+\paragraph{Setup.} Fix policies near the Nash equilibrium of Matching Pennies ($\pi_1 = (0.52, 0.48)$, $\pi_2 = (0.48, 0.52)$). For each evidence ratio $r = V_1/V_2 \in \{1, 2, 3, 5, 8, 10, 15, 20, 50\}$, draw 2000 REINFORCE gradient samples with additive noise $\sigma_i = 2/\sqrt{V_i}$, and compute the trace of the gradient covariance matrix for both standard PG and EWPG.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.48\textwidth]{figures/extended/gradient_variance.png}
+\caption{\emph{Left}: Absolute gradient variance for standard PG (red) and EWPG (green) as a function of evidence ratio. Standard PG variance is dominated by the low-evidence agent; EWPG downweights it. \emph{Right}: Empirical variance ratio (blue) vs.\ theoretical HM/AM prediction (black). Close agreement across two orders of magnitude in $r$.}
+\label{fig:gradient-variance}
+\end{figure}
+
+The empirical ratio tracks the theoretical curve $4r/(1+r)^2$ closely (Figure~\ref{fig:gradient-variance}, right), confirming that the variance improvement is not an artefact of the convergence dynamics but a direct consequence of the weighting scheme applied to the gradient estimator.
+
+
+%% ========================================================================
+\section{Convergence Rate Verification}
+\label{sec:exp-rate}
+%% ========================================================================
+
+Theorem~\ref{thm:ewpg-conv-ch3} predicts that EWPG preserves the $\mathcal{O}(1/\sqrt{n})$ rate exponent while improving the leading constant by $\operatorname{HM}(V)/\operatorname{AM}(V)$.
+
+\paragraph{Setup.} Matching Pennies, 10{,}000 episodes, 100 runs, $\gamma_n = 0.5/(n+10)^{0.75}$. Three configurations: Standard PG ($r=1$), EWPG with $r=10$, EWPG with $r=100$.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/extended/convergence_rate.png}
+\caption{\emph{Left}: Log-log plot of $\mathbb{E}[\|\pi_n - \pi^*\|^2]$ vs.\ episode number. All three methods exhibit the same slope ($\approx -0.5$, dashed lines), confirming the rate exponent is preserved. The vertical offset decreases with increasing $r$, confirming the constant improvement. \emph{Right}: Empirical constant ratio $C_w/C_{\mathrm{std}}$ vs.\ theoretical HM/AM across evidence ratios up to $r = 100$.}
+\label{fig:convergence-rate}
+\end{figure}
+
+We verify the rate exponent by fitting a line on the log-log plot (last 60\% of data). All three configurations yield slopes close to $-0.5$, consistent with the $\mathcal{O}(1/\sqrt{n})$ prediction. The vertical offset between curves quantifies the constant improvement, which matches the theoretical HM/AM ratio (Figure~\ref{fig:convergence-rate}, right).
+
+
+%% ========================================================================
+\section{Spectral Reinforcement Analysis}
+\label{sec:exp-spectral}
+%% ========================================================================
+
+Theorem~\ref{thm:basin-ch3} requires the spectral reinforcement condition ($\mu_H > 0$) on the opponent-shaping Hessian $H$. We compute $H$ numerically for three games and verify when the condition holds.
+
+\paragraph{Setup.} For each 2$\times$2 game, compute the opponent-shaping Hessian $H(\pi^*)$ at the interior Nash equilibrium via finite differences. Extract the symmetric part $S_H = (H + H^\top)/2$ and its eigenvalues.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/extended/spectral_reinforcement.png}
+\caption{Effective SOS parameter $\mu_{\mathrm{LOLA}} = \mu + \lambda\mu_H$ vs.\ LOLA strength $\lambda$ for three games. Green region: $\mu_{\mathrm{LOLA}} > 0$ (convergence guaranteed). Matching Pennies (zero-sum): strong spectral reinforcement ($\mu_H > 0$), $\mu_{\mathrm{LOLA}}$ increases with $\lambda$. Battle of the Sexes and Stag Hunt: weaker or absent reinforcement.}
+\label{fig:spectral}
+\end{figure}
+
+Matching Pennies exhibits strong spectral reinforcement: the opponent-shaping Hessian has $\mu_H > 0$, meaning LOLA monotonically improves the contraction rate as $\lambda$ increases (Figure~\ref{fig:spectral}, left). This confirms that zero-sum games are the natural domain for LOLA, as the gradient Jacobian has a large antisymmetric (rotational) component that LOLA converts to contraction.
+
+
+%% ========================================================================
+\section{Basin of Attraction}
+\label{sec:exp-basin}
+%% ========================================================================
+
+\subsection{Basin mapping}
+
+We map the convergence basin by sweeping initial conditions over a $25 \times 25$ grid in $[0.05, 0.95]^2$, running 8 trials per point with noise $\sigma = 0.3$.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.48\textwidth]{figures/lola/basin_matching_pennies.png}
+\includegraphics[width=0.48\textwidth]{figures/lola/basin_battle_of_the_sexes.png}
+\caption{Basin of attraction: Standard PG (left), LOLA-PG (centre), difference (right). White star: Nash equilibrium. LOLA approximately doubles the basin in Matching Pennies.}
+\label{fig:basin}
+\end{figure}
+
+\subsection{Basin size vs.\ LOLA strength}
+
+We sweep constant $\lambda \in \{0, 0.1, 0.2, 0.5, 1.0, 1.5, 2.0\}$ and measure basin area.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.48\textwidth]{figures/extended/annealing_schedules.png}
+\caption{\emph{Left}: Convergence under different LOLA annealing schedules. Constant $\lambda$ (purple) converges fastest initially but has residual bias. Annealed schedules $\lambda_n \propto 1/n^r$ converge to zero distance, with $r = 0.75$ matching the step-size exponent (Theorem~\ref{thm:annealed-ch3}). \emph{Right}: Basin size (fraction of state space converging) vs.\ constant $\lambda$. Basin grows monotonically, consistent with $\mu_{\mathrm{LOLA}} = \mu + \lambda\mu_H$.}
+\label{fig:annealing}
+\end{figure}
+
+\subsection{Trajectory visualisation}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.48\textwidth]{figures/lola/trajectories_matching_pennies.png}
+\hfill
+\includegraphics[width=0.48\textwidth]{figures/lola/trajectories_battle_of_the_sexes.png}
+\caption{Sample trajectories (green = converged, red = diverged). Under standard PG, Matching Pennies trajectories orbit the Nash equilibrium. LOLA converts these orbits into convergent spirals.}
+\label{fig:trajectories}
+\end{figure}
+
+The trajectory plots (Figure~\ref{fig:trajectories}) reveal the mechanism: in Matching Pennies, the gradient field has a strong rotational component at Nash. Standard PG orbits. LOLA adds a radial (contractive) component via the opponent-shaping term, converting circular motion to an inward spiral. This is the geometric content of the spectral reinforcement theorem.
+
+
+%% ========================================================================
+\section{Combined EW-LOLA-PG}
+\label{sec:exp-combined}
+%% ========================================================================
+
+Theorem~\ref{thm:combined-ch3} predicts that evidence weighting and opponent shaping compose orthogonally. We test all four combinations.
+
+\paragraph{Setup.} Matching Pennies, $V = (10, 1)$, $\lambda = 0.5$ (constant), 5{,}000 episodes, 80 runs.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/extended/combined_ewlola.png}
+\caption{\emph{Left}: Convergence curves for all four methods. EW-LOLA-PG (gold) dominates, inheriting lower variance from EWPG and faster contraction from LOLA. \emph{Right}: Mean distance in last 500 episodes. Ratios relative to Standard PG shown above bars. EW-LOLA-PG achieves the best final performance, confirming orthogonal composition.}
+\label{fig:combined}
+\end{figure}
+
+The combined algorithm achieves the lowest asymptotic distance (Figure~\ref{fig:combined}), and the improvement factors are approximately multiplicative: if EWPG gives factor $a$ and LOLA gives factor $b$, EW-LOLA gives approximately $a \times b$. This confirms that the two mechanisms act on independent terms of the Lyapunov recursion (variance and contraction respectively).
+
+
+%% ========================================================================
+\section{Multi-Game Robustness}
+\label{sec:exp-multigame}
+%% ========================================================================
+
+We test EWPG across three structurally different games to assess robustness.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/extended/multigame_comparison.png}
+\caption{EWPG (green) vs.\ Standard PG (red) on Matching Pennies (zero-sum), Rock-Paper-Scissors (zero-sum, $3 \times 3$), and Stag Hunt (coordination). EWPG consistently maintains lower variance. The improvement is most pronounced in zero-sum games where the gradient field has large rotational components.}
+\label{fig:multigame}
+\end{figure}
+
+EWPG improves convergence quality consistently across all tested games (Figure~\ref{fig:multigame}). The improvement is largest in zero-sum games (Matching Pennies, RPS) where gradient variance is the dominant obstacle, and present but smaller in the coordination game (Stag Hunt).
+
+
+%% ========================================================================
+\section{Discussion}
+\label{sec:exp-discussion}
+%% ========================================================================
+
+The experiments confirm all theoretical predictions:
+
+\begin{enumerate}
+    \item \textbf{Variance improvement} (Theorem~\ref{thm:am-hm-ch3}): Empirical variance ratio matches HM/AM across $r \in [1, 50]$. Direct gradient variance measurement and convergence constant measurement agree.
+    \item \textbf{Rate preservation} (Theorem~\ref{thm:ewpg-conv-ch3}): Log-log slopes $\approx -0.5$ for all configurations. Only the constant changes.
+    \item \textbf{Spectral reinforcement} (Definition~\ref{def:spectral-ch3}): Zero-sum games have $\mu_H > 0$; coordination games do not. Matches Proposition~\ref{prop:sufficient-ch3}.
+    \item \textbf{Basin enlargement} (Theorem~\ref{thm:basin-ch3}): Basin size grows monotonically with $\lambda$ in Matching Pennies. Trajectory plots confirm rotation-to-contraction conversion.
+    \item \textbf{Annealing} (Theorem~\ref{thm:annealed-ch3}): Annealed LOLA converges to exact Nash; constant LOLA has residual bias $O(\lambda)$, as predicted by Theorem 2 of the LOLA analysis.
+    \item \textbf{Orthogonal composition} (Theorem~\ref{thm:combined-ch3}): EW-LOLA-PG improvement is approximately multiplicative.
+\end{enumerate}
+
+%% ========================================================================
+\section{Real REINFORCE Variance}
+\label{sec:exp-real-reinforce}
+%% ========================================================================
+
+A key critique of the preceding experiments is that variance is injected artificially via additive Gaussian noise scaled as $\sigma_i = C/\sqrt{V_i}$. This section eliminates the artificial noise and uses \emph{only} the variance that arises naturally from the REINFORCE estimator.
+
+\paragraph{Setup.} We model heterogeneous evidence quality through \emph{sample budgets}: agent~1 draws $K_1$ trajectory samples per episode, agent~2 draws $K_2$. The REINFORCE variance scales as $\mathcal{O}(1/K_i)$ naturally (by the CLT), providing a non-artificial realisation of $\sigma_i^2 \propto 1/V_i$ with $V_i = K_i$. No additional noise is injected.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/roadmap/real_reinforce.png}
+\caption{\emph{Left}: Standard PG with varying sample budgets $(K_1, K_2)$. Convergence improves with more samples, but heterogeneous budgets $(10,1)$ are limited by the low-sample agent. \emph{Right}: EWPG vs Standard PG with real REINFORCE variance ($K_1=10, K_2=1$). EWPG downweights the noisy agent, producing lower-variance convergence. No artificial noise is injected---all variance comes from the REINFORCE estimator.}
+\label{fig:real-reinforce}
+\end{figure}
+
+This confirms that the EWPG improvement is not an artefact of the noise injection protocol: it holds under the native variance structure of the REINFORCE estimator when agents have genuinely different data quality (sample budgets).
+
+
+%% ========================================================================
+\section{Multi-State Stochastic Game}
+\label{sec:exp-stochastic}
+%% ========================================================================
+
+We test EWPG on a 2-player, 2-state, 2-action stochastic game---the first experiment that exercises the full stochastic game framework of~\cite{giannou2022} rather than the single-state special case.
+
+\paragraph{Game design.} State~0 is a modified Matching Pennies (zero-sum); State~1 is a Prisoner's Dilemma variant. State transitions depend on joint actions, with termination probability $\zeta = 0.1$. Policies are state-dependent: $\pi_i = (\pi_i(s=0), \pi_i(s=1)) \in \Delta(\mathcal{A}_i)^2$. The approximate Nash equilibrium is found by a long reference run (20{,}000 episodes, 5 samples/episode).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/roadmap/stochastic_game.png}
+\caption{\emph{Left}: EWPG vs Standard PG on a 2-state stochastic game with sample budgets $K = (8, 1)$. EWPG converges to a lower distance. \emph{Right}: Per-state convergence under EWPG. The zero-sum state (State~0) converges more slowly due to its rotational dynamics, while the PD state (State~1) converges faster. This illustrates the asymmetric convergence predicted by the risk decomposition~\eqref{eq:risk-taylor}.}
+\label{fig:stochastic-game}
+\end{figure}
+
+The multi-state experiment confirms that EWPG improves convergence in stochastic games with state transitions---not just in the single-state (normal-form) special case.
+
+
+%% ========================================================================
+\section{Adaptive Evidence Weight Estimation}
+\label{sec:exp-adaptive}
+%% ========================================================================
+
+A central critique of EWPG is that the evidence weights $V_i$ are \emph{assumed}, not \emph{derived}. Here we show that $V_i$ can be estimated online from the running variance of each agent's gradient history, eliminating the need for oracle knowledge.
+
+\paragraph{Adaptive estimation.} Agent $i$ maintains a window of its last 50 gradient estimates. The estimated variance is $\hat{\sigma}_i^2 = \mathrm{Var}(\{g_{i,n-50}, \ldots, g_{i,n}\})$. The adaptive evidence weight is $\hat{V}_i = 1/\hat{\sigma}_i^2$, normalised to $\hat{w}_i = \hat{V}_i / \max_j \hat{V}_j$.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/roadmap/adaptive_evidence.png}
+\caption{\emph{Left}: Convergence of Standard PG, EWPG with oracle weights, and EWPG with adaptive weights. Adaptive EWPG approaches oracle performance after an initial learning phase. \emph{Centre}: Estimated weights $w_1, w_2$ over time. The adaptive mechanism correctly identifies that agent~1 (10 samples) deserves higher weight than agent~2 (1 sample), converging to near-oracle values. \emph{Right}: Final distance comparison.}
+\label{fig:adaptive-evidence}
+\end{figure}
+
+The adaptive estimation tracks the oracle weights within $\sim$200 episodes and produces convergence performance close to the oracle EWPG. This addresses the ``tautological variance model'' critique: the heterogeneous variance model $\sigma_i^2 = C/V_i$ need not be assumed a priori---it can be estimated from the gradient history, and the AM-HM improvement still holds.
+
+
+%% ========================================================================
+\section{Summary and Limitations}
+\label{sec:exp-summary}
+%% ========================================================================
+
+The nine experiments validate all theoretical predictions and address the principal critiques:
+
+\begin{enumerate}
+    \item \textbf{Variance improvement}: confirmed with both artificial noise (\S\ref{sec:exp-variance}) and real REINFORCE variance (\S\ref{sec:exp-real-reinforce}).
+    \item \textbf{Rate preservation}: log-log slopes $\approx -0.5$ with improved constant (\S\ref{sec:exp-rate}).
+    \item \textbf{Multi-state games}: EWPG improvement persists in stochastic games with state transitions (\S\ref{sec:exp-stochastic}).
+    \item \textbf{Adaptive estimation}: evidence weights can be learned online, removing the oracle assumption (\S\ref{sec:exp-adaptive}).
+    \item \textbf{Spectral reinforcement}: verified numerically per game (\S\ref{sec:exp-spectral}).
+    \item \textbf{Orthogonal composition}: confirmed empirically (\S\ref{sec:exp-combined}).
+\end{enumerate}
+
+\paragraph{Remaining limitations.}
+\begin{itemize}
+    \item The multi-state experiment uses a 2-state game; larger state spaces (e.g., grid worlds) would strengthen the empirical case.
+    \item Policies remain tabular; extension to neural network parametrisations is needed for deep MARL applications.
+    \item LOLA requires payoff cross-derivatives, estimated here from known matrices rather than learned.
+    \item Adaptive weight estimation adds overhead and requires a burn-in period ($\sim$50 episodes).
+\end{itemize}

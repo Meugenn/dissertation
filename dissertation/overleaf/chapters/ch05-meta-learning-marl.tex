@@ -1,0 +1,137 @@
+% Chapter 5: Meta-Learning in Multi-Agent RL
+
+\chapter{Meta-Learning in Multi-Agent Reinforcement Learning}
+\label{ch:meta-learning}
+
+We now extend the single-agent framework of Chapters~\ref{ch:policy-methods}--\ref{ch:pgt-proof} to environments with multiple interacting agents. The central difficulty is \emph{non-stationarity}: each agent's environment includes the other agents' policies, which change during learning. A naive application of the single-agent Policy Gradient Theorem ignores this coupling and can lead to unstable or suboptimal behaviour. We introduce the formalism of \emph{stochastic games}, describe the non-stationarity problem precisely, and survey prior approaches that address it partially, motivating the complete solution developed in the next chapter.
+
+\section{Stochastic Games}
+\label{sec:stochastic-games}
+
+The multi-agent generalisation of the MDP is the \emph{stochastic game} (also called a \emph{Markov game}), introduced by \cite{shapley1953} and developed further by \cite{littman1994}.
+
+\begin{definition}[Stochastic game]\label{def:stochastic-game}
+An $n$-agent stochastic game is a tuple $\mathcal{M}_n = \langle \mathcal{I},\mathcal{S},\bm{\mathcal{A}},\mathcal{P},\bm{\mathcal{R}},\gamma\rangle$, where:
+\begin{enumerate}[label=(\roman*)]
+  \item $\mathcal{I}=\{1,\ldots,n\}$ is the set of agents;
+  \item $\mathcal{S}$ is a finite set of states (shared by all agents);
+  \item $\bm{\mathcal{A}}=\mathcal{A}^1\times\cdots\times\mathcal{A}^n$ is the joint action space, where $\mathcal{A}^i$ is the (finite) action set of agent~$i$;
+  \item $\mathcal{P}\colon\mathcal{S}\times\bm{\mathcal{A}}\times\mathcal{S}\to[0,1]$ is the transition function, where $\mathcal{P}(s'\mid s,\bm{a})$ gives the probability of transitioning to state~$s'$ given joint action $\bm{a}=(a^1,\ldots,a^n)$ in state~$s$;
+  \item $\bm{\mathcal{R}}=(\mathcal{R}^1,\ldots,\mathcal{R}^n)$, where $\mathcal{R}^i\colon\mathcal{S}\times\bm{\mathcal{A}}\to\mathbb{R}$ is agent~$i$'s reward function;
+  \item $\gamma\in[0,1)$ is the common discount factor.
+\end{enumerate}
+When $n=1$, this reduces to an MDP (Definition~\ref{def:mdp}).
+\end{definition}
+
+The key structural difference from an MDP is that rewards \emph{and} transitions depend on the \emph{joint} action $\bm{a}$, not just a single agent's action. This means that no agent controls the environment on its own; the outcome at every step is determined by the interaction of all agents' choices.
+
+\paragraph{Example: algorithmic pricing.} A concrete instance studied by \cite{calvano2020} involves $n$ firms repeatedly setting prices for substitutable goods. The state encodes the current price profile and demand conditions, each firm's action is a price, the transition captures market dynamics, and the reward is profit. Each firm's profit depends on all firms' prices (through demand), making this a stochastic game. The discount factor~$\gamma$ captures the firms' patience for future profits---a concept directly borrowed from economic discounting~\cite{vonneumann1944}.
+
+\subsection{Policies and Value Functions in Stochastic Games}
+\label{subsec:multi-agent-policies}
+
+Each agent~$i$ has a parameterised policy $\pi^i(a^i\mid s,\bm{\phi}^i)$ with $\bm{\phi}^i\in\mathbb{R}^{d_i}$. We write $\bm{\phi}=(\bm{\phi}^1,\ldots,\bm{\phi}^n)$ for the full joint parameter vector and $\bm{\phi}^{-i}$ for the parameters of all agents other than~$i$.
+
+\paragraph{Conditional independence.} Following~\cite{wen2019}, we assume that agents' actions are conditionally independent given the state:
+\begin{equation}\label{eq:cond-indep}
+  \pi(\bm{a}\mid s,\bm{\phi})=\prod_{j=1}^n\pi^j(a^j\mid s,\bm{\phi}^j).
+\end{equation}
+This is a standard assumption in multi-agent RL~\cite{lowe2017,kim2021policygradientalgorithmlearning}. It asserts that agents select their actions independently \emph{at each time step}, without direct communication or coordination at the moment of action selection. Importantly, this does \emph{not} mean agents are unaware of each other: each agent's policy may depend on the shared state~$s$, which in turn encodes the history of all agents' past interactions. The conditional independence is a modelling choice about the action-selection mechanism, not about the agents' strategic sophistication. It rules out explicit ``correlated'' action selection (as in correlated equilibria), but permits arbitrarily complex state-contingent strategies.
+
+Agent~$i$'s value function, given fixed joint parameters~$\bm{\phi}$, is:
+\begin{equation}\label{eq:multi-agent-value}
+  V^i_{\bm{\phi}}(s_0) = \E\!\left[\sum_{t=0}^H\gamma^t r_t^i\;\Big|\;\bm{\phi}\right] = \E\!\left[G^i(\tau_{\bm{\phi}})\right],
+\end{equation}
+where $G^i(\tau)=\sum_{t=0}^H\gamma^t r_t^i$ is agent~$i$'s discounted return along trajectory~$\tau$, and the expectation is over the randomness in all agents' policies and the transition dynamics. Note that $V^i_{\bm{\phi}}$ depends on the \emph{entire} joint parameter vector~$\bm{\phi}$, not just~$\bm{\phi}^i$: even though agent~$i$ controls only its own policy, its expected return is affected by the behaviour of all other agents through the shared transition dynamics and joint-action-dependent rewards.
+
+\section{The Non-Stationarity Problem}
+\label{sec:non-stationarity}
+
+\subsection{Why Independent Learning Fails}
+\label{subsec:independent-learning}
+
+The most straightforward multi-agent approach is \emph{independent learning}: each agent~$i$ applies the single-agent PGT (Theorem~\ref{thm:pgt}) to its own objective $V^i_{\bm{\phi}}$, treating the other agents' parameters~$\bm{\phi}^{-i}$ as fixed environment constants. Under this view, agent~$i$ computes:
+\begin{equation}\label{eq:independent-pg}
+  \nabla_{\bm{\phi}^i} V^i_{\bm{\phi}} \approx \sum_s\mu_{\pi}(s)\sum_{a^i} q^i_{\bm{\phi}}(s,a^i)\,\nabla_{\bm{\phi}^i}\pi^i(a^i\mid s,\bm{\phi}^i),
+\end{equation}
+where $q^i_{\bm{\phi}}(s,a^i) = \sum_{\bm{a}^{-i}}\pi^{-i}(\bm{a}^{-i}\mid s)\,Q^i_{\bm{\phi}}(s,a^i,\bm{a}^{-i})$ marginalises over the other agents' actions.
+
+This approach ignores a fundamental coupling: when all agents learn simultaneously, each agent's gradient step alters the shared trajectory distribution, affecting every other agent's update. From agent~$i$'s perspective, the ``environment'' is non-stationary because the other agents' policies $\bm{\phi}^{-i}$ are changing. The single-agent PGT assumed a fixed environment (assumption~(iii) in Section~\ref{sec:pgt-assumptions}); that assumption is now violated.
+
+The practical consequence is that independent learners can oscillate, fail to converge, or converge to undesirable equilibria, because each agent's gradient is computed under assumptions that are immediately invalidated by the other agents' concurrent updates~\cite{busoniu2008}.
+
+\subsection{The Markov Chain of Policies}
+\label{subsec:markov-chain-policies}
+
+Following~\cite{kim2021policygradientalgorithmlearning}, we model the co-evolution of all agents' policies as a \emph{Markov chain of joint policies}. Starting from initial joint parameters~$\bm{\phi}_0=(\bm{\phi}_0^1,\ldots,\bm{\phi}_0^n)$, agents interact with the environment and update their policies in a sequence of \emph{adaptation steps} $\ell=0,1,\ldots,L-1$.
+
+At each step~$\ell$, the agents collectively sample $K$ trajectories under the current joint policy~$\bm{\phi}_\ell$. Each agent~$i$ then updates its parameters via a (stochastic) policy gradient step:
+\begin{equation}\label{eq:inner-loop}
+  \bm{\phi}_{\ell+1}^i = \bm{\phi}_\ell^i + \alpha^i\,\widehat{\nabla_{\bm{\phi}_\ell^i} V^i_{\bm{\phi}_\ell}},
+\end{equation}
+where $\alpha^i>0$ is agent~$i$'s learning rate and $\widehat{\nabla V^i}$ is a stochastic gradient estimate---typically the REINFORCE estimator of Section~\ref{subsec:reinforce} applied to the $K$ sampled trajectories. This produces a chain of joint policies:
+\[
+  \bm{\phi}_0 \xrightarrow{\tau_{0,1},\ldots,\tau_{0,K}} \bm{\phi}_1 \xrightarrow{\tau_{1,1},\ldots,\tau_{1,K}} \cdots \xrightarrow{\tau_{L-1,1},\ldots,\tau_{L-1,K}} \bm{\phi}_L.
+\]
+The chain is Markov because $\bm{\phi}_{\ell+1}$ depends on $\bm{\phi}_\ell$ and the sampled trajectories~$\{\tau_{\ell,k}\}$, but not on earlier parameters or trajectories.
+
+\subsection{The Meta-Value Function}
+\label{subsec:meta-value}
+
+The independent-learning approach evaluates each agent by its \emph{current} performance $V^i_{\bm{\phi}_\ell}$. But in a multi-agent setting where all agents are adapting, the current performance is an incomplete measure: an agent might accept lower immediate returns if doing so steers the joint learning dynamics toward a more favourable long-run outcome.
+
+This motivates the \emph{meta-value function}, which evaluates agent~$i$'s return not at the current policy but at a \emph{future} policy in the adaptation chain:
+\begin{equation}\label{eq:meta-value}
+  V^i_{\bm{\phi}_{0:\ell+1}}(s_0) = \E\!\left[G^i(\tau_{\ell+1})\;\Big|\;\bm{\phi}_0\right],
+\end{equation}
+where the expectation is over \emph{all} intermediate trajectories $\tau_0,\ldots,\tau_\ell$ that drive the policy updates from $\bm{\phi}_0$ to $\bm{\phi}_{\ell+1}$. In other words, $V^i_{\bm{\phi}_{0:\ell+1}}$ asks: ``if we start from initial parameters~$\bm{\phi}_0$ and let all agents adapt for $\ell+1$ steps, what is agent~$i$'s expected return at the end of this adaptation process?''
+
+The meta-objective is then to choose the initial parameters~$\bm{\phi}_0^i$ to maximise this post-adaptation performance. This is a form of \emph{meta-learning}: agent~$i$ is not simply learning a good policy, but learning a good \emph{initialisation} from which to learn---analogous to MAML~\cite{finn2017} in the single-agent setting. The crucial difference from MAML is that the learning process itself involves other agents who are simultaneously adapting, so the meta-gradient must account for the effect of $\bm{\phi}_0^i$ on the entire chain of joint policy updates.
+
+\section{Prior Approaches}
+\label{sec:prior-approaches}
+
+Several methods have been proposed to address the non-stationarity problem. We review the two most relevant, highlighting what each captures and what it misses. This sets the stage for the Meta-MAPG theorem, which provides the first complete gradient.
+
+\subsection{LOLA: Learning with Opponent-Learning Awareness}
+\label{subsec:lola}
+
+\cite{foerster2018lola} proposed LOLA, which anticipates the opponent's next gradient step. Agent~$i$ optimises not $V^i(\bm{\phi}^i,\bm{\phi}^{-i})$ but:
+\begin{equation}\label{eq:lola-objective}
+  V^i\!\left(\bm{\phi}^i,\;\bm{\phi}^{-i}+\alpha^{-i}\nabla_{\bm{\phi}^{-i}}V^{-i}(\bm{\phi})\right),
+\end{equation}
+using a first-order Taylor expansion to approximate the effect of the opponent's update. This captures the \emph{peer-learning effect}---how agent~$i$'s choice of~$\bm{\phi}^i$ influences the direction of $\bm{\phi}^{-i}$'s update, and hence the environment that agent~$i$ will face in the future. LOLA was shown to achieve cooperation in the iterated Prisoner's Dilemma where independent learners defect.
+
+However, LOLA has two significant limitations. First, it only looks one step ahead in the opponent's learning process; it does not model multi-step adaptation. Second, it does not account for agent~$i$'s \emph{own} multi-step learning dynamics: LOLA optimises the immediate next-step objective, not a meta-objective over a chain of updates. \cite{letcher2019} proposed Stable Opponent Shaping (SOS) to address stability issues in LOLA, but the fundamental one-step limitation remains.
+
+\subsection{Meta-PG: Meta-Learning Policy Gradients}
+\label{subsec:meta-pg}
+
+\cite{alshedivat2018} took the complementary approach: the meta-objective \emph{does} optimise over agent~$i$'s own learning chain (as in~\eqref{eq:meta-value}), but assumes that the other agents' policy updates are independent of agent~$i$'s initialisation:
+\begin{equation}\label{eq:meta-pg-assumption}
+  \frac{\partial\bm{\phi}_{\ell+1}^{-i}}{\partial\bm{\phi}_0^i} = \bm{0}.
+\end{equation}
+This simplification makes the meta-gradient tractable---it reduces to a single-agent meta-learning problem---but ignores the coupling through shared trajectories. In reality, agent~$i$'s initial policy~$\bm{\phi}_0^i$ affects the trajectories sampled at step~$0$, which in turn affect the gradient estimates of \emph{all} agents at step~$0$, which determine $\bm{\phi}_1^{-i}$, and so on. The cross-agent derivative $\partial\bm{\phi}_{\ell+1}^{-i}/\partial\bm{\phi}_0^i$ is generally nonzero, and neglecting it discards information about how agent~$i$ can shape the learning dynamics of the other agents.
+
+\subsection{Summary and Comparison}
+\label{subsec:prior-comparison}
+
+The following table summarises what each approach captures:
+
+\medskip
+\begin{center}
+\begin{tabular}{lcc}
+  \hline
+  \textbf{Method} & \textbf{Own learning} & \textbf{Peer learning} \\
+  \hline
+  Independent PG & \texttimes & \texttimes \\
+  LOLA~\cite{foerster2018lola} & \texttimes & $\approx$ (1-step) \\
+  Meta-PG~\cite{alshedivat2018} & \checkmark & \texttimes \\
+  Meta-MAPG~\cite{kim2021policygradientalgorithmlearning} & \checkmark & \checkmark\ (exact) \\
+  \hline
+\end{tabular}
+\end{center}
+
+\medskip\noindent ``Own learning'' refers to whether the method optimises over the agent's own multi-step adaptation chain; ``peer learning'' refers to whether it accounts for the effect of the agent's policy on the other agents' learning dynamics.
+
+Neither LOLA nor Meta-PG provides the complete meta-gradient $\nabla_{\bm{\phi}_0^i} V^i_{\bm{\phi}_{0:\ell+1}}$. The Meta-MAPG theorem, proved in the next chapter, fills this gap by differentiating through the entire Markov chain of joint policy updates, including both the agent's own learning and the cross-agent coupling through shared trajectories. The result is an exact expression for the meta-gradient that reduces to the single-agent PGT (Theorem~\ref{thm:pgt}) when $n=1$ and $L=0$.

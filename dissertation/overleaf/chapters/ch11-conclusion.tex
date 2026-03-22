@@ -1,0 +1,36 @@
+\chapter{Conclusion}
+\label{ch:conclusion}
+
+\section{Summary of Results}
+
+This dissertation studied the convergence of policy gradient methods in multi-agent stochastic games, extending the framework of Giannou et al.~\cite{giannou2022} with two novel modifications.
+
+\paragraph{Evidence-weighted policy gradient.} By scaling each agent's gradient update by an evidence weight $V_i$, we showed that the effective variance in the Lyapunov analysis improves by a factor of $\operatorname{HM}(V)/\operatorname{AM}(V) \leq 1$ (Theorem~\ref{thm:am-hm-ch7}). The convergence rate exponent $\mathcal{O}(1/\sqrt{n})$ is preserved; the improvement is in the leading constant. The result follows from the AM-HM inequality applied to the per-agent variance contributions under a heterogeneous variance model $\sigma_i^2 = C/V_i$.
+
+\paragraph{Opponent-shaping policy gradient.} By incorporating Foerster et al.'s LOLA mechanism with an annealing schedule, we proved convergence to Nash equilibria in general stochastic games (Theorem~\ref{thm:annealed-ch7})---the first such guarantee for opponent-shaping methods in this setting. Under a spectral reinforcement condition on the opponent-shaping Hessian, the effective SOS parameter increases from $\mu$ to $\mu + \lambda\mu_H$, strictly enlarging the basin of attraction (Theorem~\ref{thm:basin-ch7}).
+
+\paragraph{Combined algorithm.} The two modifications are orthogonal---evidence weighting reduces variance, opponent shaping increases contraction---and compose in a single algorithm (EW-LOLA-PG, Theorem~\ref{thm:combined-ch7}).
+
+\paragraph{Formalisation.} Both results have been formalised in Lean~4 with Mathlib, verifying the key algebraic steps (energy inequality, AM-HM inequality, bias absorption) while axiomatising the measure-theoretic foundations.
+
+\section{Limitations}
+
+\begin{enumerate}
+    \item The heterogeneous variance model $\sigma_i^2 = C/V_i$ is assumed, not derived from the structure of the REINFORCE estimator. In practice, the relationship between evidence quality and gradient variance depends on the specific problem.
+    \item The spectral reinforcement condition (Definition~\ref{def:spectral-ch7}) must be verified game-by-game. We provided sufficient conditions (zero-sum games, negative cross-Hessians) but not a complete characterisation.
+    \item Both improvements are \emph{local}: they concern convergence within a neighbourhood of a Nash equilibrium. The global convergence question remains open.
+    \item The improvement from evidence weighting is in the constant, not the rate exponent. For problems where the constant is dominated by other factors (e.g., the mismatch coefficient $C_\mathcal{G}$), the practical benefit may be small.
+    \item LOLA requires each agent to model its opponents' gradients, introducing additional estimation error not captured in our analysis.
+\end{enumerate}
+
+\section{Future Work}
+
+\paragraph{Consensus alignment.} A natural extension is to add a consensus alignment term to the multi-agent gradient, penalising deviation from a shared reference policy. Formalising this as a distributed optimisation protocol and proving convergence of the combined gradient is an open problem.
+
+\paragraph{Non-tabular extension.} Our results apply to the tabular (finite state-action) setting of~\cite{giannou2022}. Extending to parametric policies (neural networks) would connect the theory to the deep RL practice where LOLA is most commonly deployed. The main challenge is that the gradient dominance property, which links first-order stationarity to Nash equilibria, may not hold in the function approximation setting.
+
+\paragraph{Adaptive evidence weights.} We treated the evidence weights $V_i$ as given. In practice, agents must estimate their own evidence quality. Developing a provably convergent scheme for \emph{jointly learning} policies and evidence weights is an open problem with connections to meta-learning and Bayesian optimisation.
+
+\paragraph{Empirical validation at scale.} Our simulations validate the results on $2 \times 2$ matrix games. Testing on larger stochastic games---including the algorithmic pricing environment of Calvano et al.~(2020) and multi-agent Atari---would establish practical relevance.
+
+\paragraph{Lean formalisation.} Several sorry's remain in the Lean files, most notably the full measure-theoretic arguments (martingale convergence, dominated convergence). Completing these would make the formalisation self-contained and contribute to the growing library of verified reinforcement learning theory.

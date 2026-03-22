@@ -1,0 +1,307 @@
+% Chapter 7: Team Policy Gradients and History-Dependent Routing
+% Status: DRAFT — Original contribution
+
+\chapter{Team Policy Gradients}
+\label{ch:team-pg}
+
+The preceding chapters developed a multi-agent framework in which each agent maintains an individual policy, and coordination emerges---if at all---through the coupling of gradient updates across shared trajectories. This chapter challenges the foundational assumption that policies are \emph{individual} objects. We propose a \emph{team policy} framework in which the joint action distribution is an irreducibly collective object, parametrised as a mixture of behavioural modes. The resulting \emph{Team Policy Gradient Theorem} (Theorem~\ref{thm:team-pgt}) decomposes the gradient into expert and routing components, providing a principled account of specialisation and coordination. We then extend the framework to \emph{history-dependent routing}, relaxing the Markov assumption on mode selection and formalising how past interactions shape present collective behaviour.
+
+The mathematical structure we develop is closely related to the Mixture-of-Experts (MoE) architecture that underpins recent advances in large language models~\cite{shazeer2017,deepseekv3}, and we make this connection precise. The key insight is that MoE is not merely an engineering trick for scaling---it is a principled decomposition of collective computation into \emph{specialisation} (what each expert knows) and \emph{routing} (when each expert acts), and this decomposition has a natural game-theoretic interpretation.
+
+\section{Beyond Conditional Independence}
+\label{sec:beyond-cond-indep}
+
+Recall the conditional independence assumption~\eqref{eq:cond-indep}: agents select actions independently given the state, $\pi(\bm{a}\mid s,\bm{\phi})=\prod_j\pi^j(a^j\mid s,\bm{\phi}^j)$. This assumption is analytically convenient and standard in the MARL literature~\cite{lowe2017,kim2021policygradientalgorithmlearning}, but it encodes a strong philosophical commitment: that collective behaviour is \emph{reducible} to individual behaviour. Even Meta-MAPG, which accounts for cross-agent coupling through the gradient chain, maintains this commitment at the level of action selection---agents act alone, even if they learn in awareness of each other.
+
+There are at least three reasons to question this assumption.
+
+First, \emph{empirically}, human decision-making is often irreducibly joint. Teams develop shared mental models, couples finish each other's sentences, orchestras follow a conductor. The ``policy'' that generates the joint action is not a product of individual policies but a genuinely collective object that exists at the group level~\cite{bratman1993,tuomela2005}. In economic theory, this observation is formalised in the team theory of \cite{marschak1972}, where the team's decision rule is designed jointly before being distributed to individuals.
+
+Second, \emph{game-theoretically}, the restriction to product policies excludes correlated equilibria~\cite{aumann1974}, which are both more general and, in many games, more efficient than Nash equilibria. A correlated equilibrium requires a joint distribution over actions that does not factorise---precisely the structure we develop below.
+
+Third, \emph{computationally}, the MoE architecture demonstrates that mixtures of specialised sub-policies, coordinated by a learned routing function, can be vastly more efficient than either a single monolithic policy or a collection of independent ones~\cite{shazeer2017,deepseekv3}. The routing function plays the role of a coordination mechanism that operates \emph{above} the individual experts.
+
+\section{The Team Policy}
+\label{sec:team-policy}
+
+\subsection{General Formulation}
+\label{subsec:team-general}
+
+We define a \emph{team policy} as a joint distribution over the action profile $\bm{a}=(a^1,\ldots,a^n)$, parametrised by shared parameters~$\theta$:
+\begin{equation}\label{eq:team-policy}
+  \pi_{\mathrm{team}}(\bm{a}\mid s,\theta) \ge 0, \qquad
+  \sum_{\bm{a}\in\bm{\mathcal{A}}} \pi_{\mathrm{team}}(\bm{a}\mid s,\theta) = 1.
+\end{equation}
+Note that $\pi_{\mathrm{team}}$ is a distribution over the \emph{joint} action space $\bm{\mathcal{A}}=\mathcal{A}^1\times\cdots\times\mathcal{A}^n$, not a product of individual distributions. The parameter vector $\theta$ is shared across all agents, reflecting the idea that the team policy is a collective object.
+
+The team value function and performance measure are defined exactly as in the individual case:
+\begin{equation}\label{eq:team-value}
+  J(\theta) = V_\theta(s_0) = \E_{\pi_{\mathrm{team}}(\cdot\mid\cdot,\theta)}\!\left[\sum_{t=0}^\infty \gamma^t R_{t+1}\right],
+\end{equation}
+where $R_{t+1}$ is a \emph{team reward}---for instance, $R_{t+1}=\sum_i r_{t+1}^i$ (utilitarian) or $R_{t+1}=\min_i r_{t+1}^i$ (egalitarian). When individual rewards are used, each agent $i$ has its own team value $V_\theta^i$, and the analysis proceeds component-wise.
+
+\subsection{Mixture-of-Experts Structure}
+\label{subsec:moe-structure}
+
+The general team policy~\eqref{eq:team-policy} has $|\bm{\mathcal{A}}|-1$ free parameters per state, which is exponential in~$n$. To make the parametrisation tractable while preserving genuinely joint structure, we adopt a \emph{mixture-of-experts} (MoE) decomposition:
+\begin{equation}\label{eq:moe-team-policy}
+  \pi_{\mathrm{team}}(\bm{a}\mid s,\theta) = \sum_{k=1}^K w_k(s,\theta_g)\;\pi_k(\bm{a}\mid s,\theta_k),
+\end{equation}
+where:
+\begin{enumerate}[label=(\roman*)]
+  \item $\{w_k(s,\theta_g)\}_{k=1}^K$ is the \emph{routing function} (or \emph{gating network}), a probability distribution over $K$ behavioural modes, parametrised by $\theta_g$;
+  \item $\pi_k(\bm{a}\mid s,\theta_k)$ is the $k$-th \emph{expert policy}---a joint distribution over actions representing a distinct pattern of collective behaviour, parametrised by~$\theta_k$;
+  \item $\theta=(\theta_g,\theta_1,\ldots,\theta_K)$ is the full parameter vector.
+\end{enumerate}
+
+The routing function is typically a softmax over expert scores:
+\begin{equation}\label{eq:routing}
+  w_k(s,\theta_g) = \frac{\exp(e_k(s,\theta_g))}{\sum_{j=1}^K \exp(e_j(s,\theta_g))},
+\end{equation}
+where $e_k(s,\theta_g)$ is the score (logit) assigned to expert~$k$ by the gating network. In the MoE architecture of \cite{shazeer2017}, the gating network is a small neural network; in our setting, it could equally be a linear function of state features or a tabular mapping.
+
+\paragraph{Interpretation.} Each expert $\pi_k$ represents a distinct \emph{mode of collective behaviour}: expert 1 might encode ``agent 1 leads, agent 2 follows''; expert 2 might encode ``symmetric cooperation''; expert 3 might encode ``independent action.'' The routing function determines which mode is active in each state. This is the formal analogue of what \cite{bratman1993} calls a \emph{shared cooperative activity}: the mode of interaction is a collective object that is not reducible to individual intentions.
+
+\paragraph{Special cases.} The MoE team policy~\eqref{eq:moe-team-policy} nests several important structures:
+\begin{enumerate}[label=(\alph*)]
+  \item \emph{Independent policies.} If $K=1$ and $\pi_1(\bm{a}\mid s,\theta_1)=\prod_j\pi^j(a^j\mid s,\phi^j)$, we recover the conditionally independent setting of Chapter~\ref{ch:meta-learning}.
+  \item \emph{Correlated equilibrium.} If the routing weights are state-independent and the experts are deterministic joint actions, $\pi_{\mathrm{team}}$ is a correlated distribution over action profiles---exactly the structure of a correlated equilibrium~\cite{aumann1974}.
+  \item \emph{Full joint policy.} If $K=|\bm{\mathcal{A}}|$ and each expert places mass on a single joint action, we recover the unrestricted joint distribution (at the cost of exponential parametrisation).
+  \item \emph{DeepSeek-style sparse MoE.} If only $K'\ll K$ experts are active per state (top-$K'$ routing with the rest set to zero), we obtain a sparse mixture that trades off expressiveness against computational cost, mirroring the architecture of \cite{deepseekv3}.
+\end{enumerate}
+
+\section{The Team Policy Gradient Theorem}
+\label{sec:team-pgt}
+
+We now state and prove the gradient of the performance measure under the MoE team policy. The result decomposes into two interpretable components---an \emph{expert gradient} and a \emph{routing gradient}---that respectively govern specialisation and coordination.
+
+\begin{theorem}[Team Policy Gradient Theorem]\label{thm:team-pgt}
+Let $\pi_{\mathrm{team}}(\bm{a}\mid s,\theta)=\sum_k w_k(s,\theta_g)\,\pi_k(\bm{a}\mid s,\theta_k)$ be a differentiable MoE team policy on a finite MDP with bounded rewards. Then:
+
+\medskip\noindent\emph{(i) Expert gradient.} For each expert $k\in\{1,\ldots,K\}$,
+\begin{equation}\label{eq:expert-gradient}
+  \nabla_{\theta_k} J(\theta) = \sum_{s\in\mathcal{S}} \mu_\pi(s)\, w_k(s,\theta_g) \sum_{\bm{a}\in\bm{\mathcal{A}}} q_\pi(s,\bm{a})\,\nabla_{\theta_k}\pi_k(\bm{a}\mid s,\theta_k),
+\end{equation}
+where $\mu_\pi$ is the on-policy state distribution under $\pi_{\mathrm{team}}$ and $q_\pi(s,\bm{a})$ is the joint action-value function.
+
+\medskip\noindent\emph{(ii) Routing gradient.}
+\begin{equation}\label{eq:routing-gradient}
+  \nabla_{\theta_g} J(\theta) = \sum_{s\in\mathcal{S}} \mu_\pi(s) \sum_{k=1}^K Q_k(s)\,\nabla_{\theta_g} w_k(s,\theta_g),
+\end{equation}
+where $Q_k(s) = \sum_{\bm{a}} \pi_k(\bm{a}\mid s,\theta_k)\, q_\pi(s,\bm{a})$ is the \emph{expected action-value under expert~$k$} in state~$s$.
+
+\medskip\noindent\emph{(iii) Full gradient.} The complete gradient is $\nabla_\theta J = (\nabla_{\theta_g}J,\,\nabla_{\theta_1}J,\,\ldots,\,\nabla_{\theta_K}J)$.
+\end{theorem}
+
+\begin{proof}
+We apply the single-agent PGT (Theorem~\ref{thm:pgt}) with the ``action'' being the joint action $\bm{a}\in\bm{\mathcal{A}}$. This gives:
+\begin{equation}\label{eq:team-pgt-raw}
+  \nabla_\theta J(\theta) \propto \sum_s \mu_\pi(s) \sum_{\bm{a}} q_\pi(s,\bm{a})\, \nabla_\theta\,\pi_{\mathrm{team}}(\bm{a}\mid s,\theta).
+\end{equation}
+It remains to decompose $\nabla_\theta\pi_{\mathrm{team}}$ using the MoE structure~\eqref{eq:moe-team-policy}.
+
+\medskip\noindent\textbf{Expert gradient.} Since $\pi_{\mathrm{team}}(\bm{a}\mid s,\theta) = \sum_j w_j\,\pi_j(\bm{a}\mid s,\theta_j)$, and only the $k$-th expert depends on~$\theta_k$:
+\[
+  \nabla_{\theta_k}\pi_{\mathrm{team}}(\bm{a}\mid s,\theta) = w_k(s,\theta_g)\,\nabla_{\theta_k}\pi_k(\bm{a}\mid s,\theta_k).
+\]
+Substituting into~\eqref{eq:team-pgt-raw} yields~\eqref{eq:expert-gradient}.
+
+\medskip\noindent\textbf{Routing gradient.} Differentiating with respect to~$\theta_g$:
+\[
+  \nabla_{\theta_g}\pi_{\mathrm{team}}(\bm{a}\mid s,\theta) = \sum_{k=1}^K \nabla_{\theta_g}w_k(s,\theta_g)\;\pi_k(\bm{a}\mid s,\theta_k).
+\]
+Substituting into~\eqref{eq:team-pgt-raw} and interchanging the sums over $\bm{a}$ and $k$:
+\begin{align*}
+  \nabla_{\theta_g} J(\theta)
+  &\propto \sum_s \mu_\pi(s) \sum_{\bm{a}} q_\pi(s,\bm{a}) \sum_k \nabla_{\theta_g}w_k(s,\theta_g)\;\pi_k(\bm{a}\mid s,\theta_k) \\
+  &= \sum_s \mu_\pi(s) \sum_k \nabla_{\theta_g}w_k(s,\theta_g) \underbrace{\sum_{\bm{a}} \pi_k(\bm{a}\mid s,\theta_k)\, q_\pi(s,\bm{a})}_{=\,Q_k(s)},
+\end{align*}
+which is~\eqref{eq:routing-gradient}.
+\end{proof}
+
+\subsection{Interpretation}
+\label{subsec:team-pgt-interp}
+
+The decomposition in Theorem~\ref{thm:team-pgt} separates two fundamentally different aspects of collective learning:
+
+\paragraph{Specialisation (expert gradient).} Equation~\eqref{eq:expert-gradient} says: to improve expert~$k$, adjust its parameters in the direction that increases the action-value, \emph{weighted by how often expert~$k$ is actually used} (through $w_k$). Experts that are rarely routed to receive small gradient signal---they are not ``wasting'' gradient on states they will never see. This is the formal mechanism behind specialisation: each expert is trained primarily on the states where it is selected, and can therefore develop a focused, high-quality policy for those states.
+
+\paragraph{Coordination (routing gradient).} Equation~\eqref{eq:routing-gradient} says: to improve the routing, adjust the gating parameters to increase the weight on experts that have high expected value $Q_k(s)$ in each state. The quantity $Q_k(s)$ is a ``grade'' for expert~$k$ in state~$s$---how well it would do if activated. The routing gradient steers the team toward using each expert where it performs best.
+
+The interaction between specialisation and coordination creates a virtuous cycle: as experts specialise (via the expert gradient), their $Q_k(s)$ values diverge across states, making the routing signal sharper; as routing improves (via the routing gradient), each expert receives a more focused training signal, accelerating specialisation. This dynamic is precisely what is observed in MoE training in the LLM setting~\cite{deepseekv3}.
+
+\subsection{Relationship to Prior Results}
+\label{subsec:team-relations}
+
+\paragraph{Reduction to the standard PGT.} When $K=1$, there is a single expert and the routing is trivial ($w_1=1$). The routing gradient vanishes, and the expert gradient reduces to the standard PGT (Theorem~\ref{thm:pgt}) applied to the joint action space.
+
+\paragraph{Reduction to independent PG.} When $K=1$ and the single expert factorises as $\pi_1(\bm{a}\mid s)=\prod_j\pi^j(a^j\mid s)$, we recover the independent policy gradient of Section~\ref{subsec:independent-learning}, since the gradient decomposes across agents.
+
+\paragraph{Relationship to Meta-MAPG.} The Team PGT and the Meta-MAPG theorem (Theorem~\ref{thm:meta-mapg}) address complementary aspects of multi-agent learning. Meta-MAPG operates with individual policies but accounts for cross-agent coupling through the chain of gradient updates over time. The Team PGT operates with a joint policy but considers a single optimisation step. The two can be \emph{combined}: one can define a meta-value function over a chain of team policy updates, producing a ``Meta-Team PGT'' that captures both the joint structure of the policy and the temporal structure of the learning process. We leave this synthesis for future work.
+
+\section{History-Dependent Routing}
+\label{sec:history-routing}
+
+\subsection{Motivation: The Limits of Markov Routing}
+\label{subsec:markov-limits}
+
+The team policy~\eqref{eq:moe-team-policy} selects the behavioural mode based only on the current state~$s$. But the appropriate mode of collective behaviour often depends on the \emph{history} of interaction, not just the present situation.
+
+Consider the iterated Prisoner's Dilemma. Effective strategies like tit-for-tat (``cooperate if the opponent cooperated last round; defect otherwise'') depend on the history of play. More subtly, strategies that build trust gradually (``cooperate with increasing probability as the opponent's cooperation streak lengthens'') depend on patterns in the history that no single-step state can capture, unless the state space is artificially inflated to encode the full history.
+
+In human teams, this phenomenon is ubiquitous. A team of surgeons operates in a mode determined not just by the current state of the patient (the ``state'') but by the team's shared history: who has worked together before, what went wrong last time, what conventions they have developed. The past conditions the present mode of collective action in ways that bypass the current state.
+
+Formally, the issue is that Markov routing $w_k(s,\theta_g)$ requires the state to be a \emph{sufficient statistic} for the optimal mode selection. When it is not---which is the typical case in multi-agent settings with rich interaction histories---the Markov assumption leads to suboptimal coordination.
+
+\subsection{Formulation}
+\label{subsec:history-formulation}
+
+We extend the MoE team policy by allowing the routing function to depend on the full interaction history $h_t = (s_0,\bm{a}_0,r_1,s_1,\bm{a}_1,r_2,\ldots,s_t)$:
+\begin{equation}\label{eq:history-team-policy}
+  \pi_{\mathrm{team}}(\bm{a}\mid h_t,\theta) = \sum_{k=1}^K w_k(h_t,\theta_g)\;\pi_k(\bm{a}\mid s_t,\theta_k).
+\end{equation}
+Note that the experts $\pi_k$ still condition only on the current state~$s_t$, while the routing $w_k$ conditions on the full history~$h_t$. This is a deliberate design choice: the experts represent \emph{modes of action} that depend on the current situation, while the routing represents the \emph{selection of mode} that depends on the trajectory of past interactions. The asymmetry mirrors the distinction in cognitive science between procedural knowledge (how to act in a given situation) and episodic memory (which past experiences shape the current approach)~\cite{tulving1972}.
+
+\paragraph{Connection to attention mechanisms.} In transformer-based MoE architectures~\cite{deepseekv3}, the routing decision is made by a gating network that operates on the output of attention layers. Since attention is itself a history-dependent operation---it computes a weighted combination of all past token representations---the resulting routing is implicitly history-dependent. Our formulation~\eqref{eq:history-team-policy} makes this dependence explicit and provides a game-theoretic interpretation: the attention mechanism aggregates the history of multi-agent interactions to determine the current mode of collective behaviour.
+
+\subsection{The History-Dependent Team PGT}
+\label{subsec:history-team-pgt}
+
+The extension to history-dependent routing requires working with \emph{history-dependent policies}, which are no longer Markov. We present the result for the episodic (finite-horizon) case, where the analysis is cleanest.
+
+\begin{theorem}[History-Dependent Team PGT]\label{thm:history-team-pgt}
+Let $\pi_{\mathrm{team}}(\bm{a}\mid h_t,\theta)$ be the history-dependent MoE team policy~\eqref{eq:history-team-policy} in a finite-horizon MDP with horizon~$T$ and bounded rewards. Then:
+
+\medskip\noindent\emph{(i) Expert gradient.}
+\begin{equation}\label{eq:history-expert-grad}
+  \nabla_{\theta_k}J(\theta) = \E\!\left[\sum_{t=0}^{T-1} w_k(h_t,\theta_g)\sum_{\bm{a}} q_\pi(h_t,\bm{a})\,\nabla_{\theta_k}\pi_k(\bm{a}\mid s_t,\theta_k)\right],
+\end{equation}
+where $q_\pi(h_t,\bm{a}) = \E_\pi[G_t\mid h_t,\,\bm{A}_t=\bm{a}]$ is the history-dependent action-value function.
+
+\medskip\noindent\emph{(ii) Routing gradient.}
+\begin{equation}\label{eq:history-routing-grad}
+  \nabla_{\theta_g}J(\theta) = \E\!\left[\sum_{t=0}^{T-1}\sum_{k=1}^K Q_k(h_t)\,\nabla_{\theta_g}w_k(h_t,\theta_g)\right],
+\end{equation}
+where $Q_k(h_t) = \sum_{\bm{a}}\pi_k(\bm{a}\mid s_t,\theta_k)\,q_\pi(h_t,\bm{a})$.
+\end{theorem}
+
+\begin{proof}
+The trajectory probability under the history-dependent team policy factorises as:
+\[
+  p(\tau\mid\theta) = d_0(s_0)\prod_{t=0}^{T-1}\pi_{\mathrm{team}}(\bm{a}_t\mid h_t,\theta)\,\mathcal{P}(s_{t+1}\mid s_t,\bm{a}_t).
+\]
+The performance measure is $J(\theta)=\E_{\tau\sim p(\cdot\mid\theta)}[G(\tau)]$. By the likelihood ratio method:
+\[
+  \nabla_\theta J(\theta) = \E\!\left[G(\tau)\,\nabla_\theta\log p(\tau\mid\theta)\right]
+  = \E\!\left[G(\tau)\sum_{t=0}^{T-1}\nabla_\theta\log\pi_{\mathrm{team}}(\bm{a}_t\mid h_t,\theta)\right].
+\]
+Using the reward-to-go baseline (which does not affect the expectation):
+\begin{equation}\label{eq:history-reinforce}
+  \nabla_\theta J(\theta) = \E\!\left[\sum_{t=0}^{T-1} G_t\,\nabla_\theta\log\pi_{\mathrm{team}}(\bm{a}_t\mid h_t,\theta)\right].
+\end{equation}
+We now decompose $\nabla_\theta\log\pi_{\mathrm{team}}$. Suppressing the arguments for brevity:
+\[
+  \nabla_{\theta_k}\log\pi_{\mathrm{team}} = \frac{w_k\,\nabla_{\theta_k}\pi_k}{\pi_{\mathrm{team}}}, \qquad
+  \nabla_{\theta_g}\log\pi_{\mathrm{team}} = \frac{\sum_j(\nabla_{\theta_g}w_j)\,\pi_j}{\pi_{\mathrm{team}}}.
+\]
+Substituting into~\eqref{eq:history-reinforce} and using the fact that $\E[G_t\mid h_t,\bm{a}_t]=q_\pi(h_t,\bm{a}_t)$, we condition on $(h_t,\bm{a}_t)$ and then marginalise over $\bm{a}_t$ to obtain~\eqref{eq:history-expert-grad} and~\eqref{eq:history-routing-grad}.
+\end{proof}
+
+\subsection{When History Matters: The Non-Markov Coordination Gain}
+\label{subsec:non-markov-gain}
+
+A natural question is: when does history-dependent routing outperform Markov routing? The answer is tied to a quantity we call the \emph{coordination information} of the history:
+\begin{equation}\label{eq:coord-info}
+  \mathcal{I}_{\mathrm{coord}}(t) = \max_k\;\bigl|Q_k(h_t) - Q_k(s_t)\bigr|,
+\end{equation}
+where $Q_k(s_t)=\E[Q_k(h_t)\mid s_t]$ is the Markov approximation. When $\mathcal{I}_{\mathrm{coord}}$ is large, the history contains information about which expert to activate that is not captured by the current state. The history-dependent routing gradient~\eqref{eq:history-routing-grad} exploits this information; the Markov routing gradient~\eqref{eq:routing-gradient} cannot.
+
+This formalises the intuition from Section~\ref{subsec:markov-limits}: the past conditions the present mode of collective action precisely when the history carries coordination-relevant information beyond what the state provides. In the iterated Prisoner's Dilemma, for instance, the history of cooperation and defection carries information about the opponent's ``type'' (cooperative or exploitative) that determines which collective mode is appropriate, even when the stage game state is the same every round.
+
+\section{Representation Theory: Universality and Equivalence}
+\label{sec:representation}
+
+The Team PGT (Theorems~\ref{thm:team-pgt} and~\ref{thm:history-team-pgt}) tells us \emph{how to optimise} a team policy. We now ask the complementary question: \emph{is the class of MoE team policies rich enough?} We establish two results. First, a \emph{universal approximation theorem} showing that MoE team policies with sufficiently many experts can approximate any joint policy to arbitrary precision. Second, an \emph{isomorphism theorem} showing that the MoE (mixture) parametrisation and the ``dense'' (monolithic) parametrisation are equivalent in representational power, differing only in computational structure.
+
+\subsection{Universal Approximation of Joint Policies}
+\label{subsec:universal-approx}
+
+\begin{theorem}[MoE Team Policy Universal Approximation]\label{thm:moe-uat}
+Let $\mathcal{S}$ and $\bm{\mathcal{A}}$ be finite. Let $\pi^*(\bm{a}\mid s)$ be an arbitrary joint policy on the stochastic game~$\mathcal{M}_n$, and let each expert $\pi_k$ be restricted to the class of product (conditionally independent) policies: $\pi_k(\bm{a}\mid s,\theta_k)=\prod_{j=1}^n\pi_k^j(a^j\mid s,\theta_k^j)$. Then for any $\varepsilon>0$, there exists $K\in\mathbb{N}$ and parameters $\theta=(\theta_g,\theta_1,\ldots,\theta_K)$ such that
+\begin{equation}\label{eq:moe-uat}
+  \max_{s\in\mathcal{S}}\;\bigl\|\pi_{\mathrm{team}}(\cdot\mid s,\theta)-\pi^*(\cdot\mid s)\bigr\|_1 < \varepsilon.
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+Fix $s\in\mathcal{S}$. The target distribution $\pi^*(\cdot\mid s)$ is a point in the simplex $\Delta(\bm{\mathcal{A}})$. Any point in the simplex can be written as a convex combination of vertices (deterministic joint actions). Each vertex $\bm{a}^*$ can be approximated to arbitrary precision by a product policy $\pi_k(\bm{a}\mid s)=\prod_j\pi_k^j(a^j\mid s)$ that places probability $1-\delta$ on $a^{*j}$ for each agent~$j$, giving $\pi_k(\bm{a}^*\mid s)\ge(1-\delta)^n$. Since there are at most $|\bm{\mathcal{A}}|$ vertices, choosing $K=|\bm{\mathcal{A}}|$ product experts that approximate the vertices, and setting the routing weights $w_k(s)=\pi^*(\bm{a}_k^*\mid s)$, gives a mixture that approximates $\pi^*(\cdot\mid s)$ to within $O(n\delta)$ in $L^1$ norm. Since $\delta$ is arbitrary and $|\mathcal{S}|$ is finite, taking $\delta<\varepsilon/(n|\mathcal{S}|)$ yields~\eqref{eq:moe-uat}.
+\end{proof}
+
+\paragraph{Interpretation.} Theorem~\ref{thm:moe-uat} states that \emph{a mixture of conditionally independent policies can approximate any correlated joint policy}. The conditionally independent experts---agents acting alone within each mode---are individually incapable of correlation, but their \emph{mixture} can produce arbitrarily complex correlations. The routing function is the mechanism through which correlation arises: by selecting different independent modes with appropriate probabilities, the team as a whole exhibits correlated behaviour.
+
+This has a precise analogue in probability theory: any joint distribution can be written as a mixture of product distributions (this is a consequence of the fact that product distributions span the simplex). The number of mixture components $K$ required depends on the \emph{correlation complexity} of the target policy---highly correlated joint policies require more experts to approximate than nearly independent ones.
+
+\paragraph{Rate of approximation.} For a two-agent game with $|\mathcal{A}^1|=|\mathcal{A}^2|=m$, the joint action space has $m^2$ elements. A generic joint policy in $\Delta(\bm{\mathcal{A}})$ may require up to $K=m^2$ product experts for exact representation (the Carathéodory number of the simplex). However, joint policies with low correlation rank---those well-approximated by a small number of product components---require far fewer. This mirrors the observation in MoE language models that only a small number of experts (typically 2--8 out of hundreds) need to be active per token for near-optimal performance~\cite{deepseekv3}.
+
+\subsection{The Dense--Sparse Isomorphism}
+\label{subsec:dense-sparse-iso}
+
+We now formalise the relationship between the MoE (``sparse'') parametrisation and a ``dense'' parametrisation that treats the joint policy as a single monolithic object.
+
+\begin{definition}[Dense parametrisation]\label{def:dense-param}
+A \emph{dense team policy} is a direct parametrisation of the joint distribution:
+\begin{equation}\label{eq:dense-policy}
+  \pi_{\mathrm{dense}}(\bm{a}\mid s,\psi) = \frac{\exp(f_{\bm{a}}(s,\psi))}{\sum_{\bm{a}'}\exp(f_{\bm{a}'}(s,\psi))},
+\end{equation}
+where $f_{\bm{a}}(s,\psi)$ is a score function (logit) for joint action~$\bm{a}$ in state~$s$, parametrised by~$\psi$, and the normalisation ensures a valid probability distribution. All parameters are active for every input---there is no routing or sparsity.
+\end{definition}
+
+\begin{theorem}[Dense--Sparse Isomorphism]\label{thm:dense-sparse-iso}
+Let $\mathcal{S}$ and $\bm{\mathcal{A}}$ be finite. The following hold:
+
+\medskip\noindent\emph{(i) Sparse $\to$ Dense (embedding).} For any MoE team policy $\pi_{\mathrm{team}}(\bm{a}\mid s,\theta)$ with $K$ experts, there exists a dense parametrisation $\psi(\theta)$ such that $\pi_{\mathrm{dense}}(\bm{a}\mid s,\psi(\theta))=\pi_{\mathrm{team}}(\bm{a}\mid s,\theta)$ for all $(s,\bm{a})$.
+
+\medskip\noindent\emph{(ii) Dense $\to$ Sparse (decomposition).} For any dense team policy $\pi_{\mathrm{dense}}(\bm{a}\mid s,\psi)$, and any $\varepsilon>0$, there exist $K\le|\bm{\mathcal{A}}|$ and parameters $\theta(\psi)$ such that $\|\pi_{\mathrm{team}}(\cdot\mid s,\theta(\psi))-\pi_{\mathrm{dense}}(\cdot\mid s,\psi)\|_1<\varepsilon$ for all $s$.
+
+\medskip\noindent\emph{(iii) Functional equivalence.} The classes of distributions representable by the MoE and dense parametrisations are identical:
+\begin{equation}\label{eq:iso}
+  \bigl\{\pi_{\mathrm{team}}(\cdot\mid s,\theta):\theta\in\Theta,\,K\in\mathbb{N}\bigr\} = \bigl\{\pi_{\mathrm{dense}}(\cdot\mid s,\psi):\psi\in\Psi\bigr\} = \Delta(\bm{\mathcal{A}})
+\end{equation}
+for each $s\in\mathcal{S}$, where $\Delta(\bm{\mathcal{A}})$ is the probability simplex over joint actions.
+\end{theorem}
+
+\begin{proof}
+\emph{(i)} Given a mixture $\pi_{\mathrm{team}}(\bm{a}\mid s,\theta)=\sum_k w_k(s,\theta_g)\pi_k(\bm{a}\mid s,\theta_k)$, simply set $f_{\bm{a}}(s,\psi)=\log\pi_{\mathrm{team}}(\bm{a}\mid s,\theta)$ for each $(\bm{a},s)$. The softmax recovers $\pi_{\mathrm{team}}$ exactly.
+
+\emph{(ii)} This follows from Theorem~\ref{thm:moe-uat}: the dense policy $\pi_{\mathrm{dense}}(\cdot\mid s,\psi)$ is an arbitrary distribution in $\Delta(\bm{\mathcal{A}})$, and any such distribution can be $\varepsilon$-approximated by an MoE with product experts. For exact representation, take $K=|\bm{\mathcal{A}}|$ experts, each a point mass on a distinct joint action, with routing weights $w_k(s)=\pi_{\mathrm{dense}}(\bm{a}_k\mid s,\psi)$.
+
+\emph{(iii)} Both parametrisations can represent any distribution in $\Delta(\bm{\mathcal{A}})$ (the dense parametrisation via~\eqref{eq:dense-policy} with unrestricted logits; the MoE parametrisation via part~(ii) with $K=|\bm{\mathcal{A}}|$). The result follows.
+\end{proof}
+
+\subsection{Interpretation: Parametrisation vs.\ Ontology}
+\label{subsec:param-vs-ontology}
+
+Theorem~\ref{thm:dense-sparse-iso} establishes that the MoE and dense parametrisations are \emph{functionally equivalent}: they represent the same set of joint policies. The difference between them is not in what they can express, but in \emph{how they express it}---their computational and structural properties.
+
+\paragraph{Computational efficiency.} The dense parametrisation requires $O(|\bm{\mathcal{A}}|)=O(\prod_i|\mathcal{A}^i|)$ parameters per state---exponential in the number of agents. The MoE parametrisation requires $O(K\cdot\sum_i|\mathcal{A}^i|+K)$ parameters---linear in $n$ for each expert, times the number of experts. When $K\ll|\bm{\mathcal{A}}|$ (sparse activation), the MoE is vastly more efficient. This is precisely the advantage exploited by MoE language models~\cite{shazeer2017,deepseekv3}: the same representational power at a fraction of the per-input computation cost.
+
+\paragraph{Structural transparency.} The MoE parametrisation makes the internal structure of the joint policy \emph{legible}: one can inspect which experts are active in which states, what each expert specialises in, and how the routing allocates collective behaviour. The dense parametrisation treats the joint policy as an opaque function. This difference in legibility has no effect on the function computed, but it profoundly affects interpretability and the ability to inject structural priors.
+
+\paragraph{Gradient structure.} The Team PGT (Theorem~\ref{thm:team-pgt}) shows that the MoE parametrisation induces a natural decomposition of the gradient into expert and routing components. Under the dense parametrisation, the gradient is a single undifferentiated object. Both compute the same update in function space (by the chain rule), but the MoE decomposition enables separate learning rates, selective training, and expert freezing---design choices that are invisible under the dense parametrisation.
+
+These three properties---computational efficiency, structural transparency, and gradient decomposition---are consequences of the \emph{parametrisation}, not the \emph{function class}. The isomorphism theorem guarantees that the underlying representational capacity is identical. This distinction between the properties of a representation and the properties of the thing represented is, we believe, of independent interest beyond the multi-agent setting; we return to it in the Discussion.
+
+\section{Discussion}
+\label{sec:ch7-discussion}
+
+\paragraph{Implications for multi-agent learning.} The Team PGT provides a gradient that operates at the level of collective behaviour rather than individual action. This has practical implications for algorithm design: instead of each agent independently computing its own gradient and hoping that coordination emerges, a team-level optimiser can directly adjust both the modes of behaviour (expert gradient) and the conditions under which each mode is deployed (routing gradient). The history-dependent extension allows this coordination to be informed by the full trajectory of past interactions, capturing phenomena like trust-building, reputation, and institutional memory that Markov agents cannot represent.
+
+\paragraph{Implications for LLM architectures.} The connection to Mixture-of-Experts is more than an analogy. In the cooperative steering game of later chapters, the frozen LLM and its hypernetwork can be viewed as a team whose joint policy is an MoE: the LLM's internal experts are the behavioural modes, and the hypernetwork's steering signal acts as history-dependent routing that selects which mode of LLM behaviour to activate based on the conversation history. The Team PGT provides the gradient for training this routing, and the history-dependent extension explains why attention-based context processing is essential for effective steering.
+
+\paragraph{Parametrisation and structure.} The Dense--Sparse Isomorphism (Theorem~\ref{thm:dense-sparse-iso}) establishes that the MoE and dense parametrisations are functionally equivalent---they represent the same class of joint policies. This has a subtle but important consequence: the properties that make MoE architectures powerful (computational efficiency, specialisation, interpretability) are properties of the \emph{parametrisation}, not of the function being computed. Two systems can compute the same input--output mapping while having radically different internal structures, and these structural differences matter for learning dynamics, scalability, and human understanding, even though they are invisible at the level of the represented function.
+
+This observation connects to a broader theme in mathematics and computer science: the distinction between a mathematical object and its representations. A group can be presented by generators and relations, or by a matrix representation, or by its Cayley graph; these are isomorphic as abstract groups but have different computational properties. A probability distribution can be parametrised as a dense vector, a mixture model, a graphical model, or a neural network; these are equivalent as distributions but differ in sample complexity, inference speed, and interpretability. The Dense--Sparse Isomorphism is an instance of this general phenomenon, applied to the specific setting of multi-agent joint policies.
+
+\paragraph{Relationship to shared agency in philosophy.} The team policy framework formalises a key insight from the philosophy of collective intentionality~\cite{bratman1993,tuomela2005}: that genuinely shared activities are not reducible to individual actions plus mutual beliefs. The team policy~$\pi_{\mathrm{team}}$ is ontologically prior to any individual marginal~$\pi^i(\cdot) = \sum_{\bm{a}^{-i}}\pi_{\mathrm{team}}(\cdot,\bm{a}^{-i}\mid s)$. The routing function formalises the mechanism by which the collective mode is determined---what \cite{bratman1993} calls the ``meshing of subplans.''
+
+The Universal Approximation Theorem~\ref{thm:moe-uat} adds a further insight: even when each expert policy is \emph{conditionally independent} (agents acting alone within each mode), the \emph{mixture} can represent arbitrarily complex correlations. Individual independence at the level of components is compatible with collective correlation at the level of the whole---a formal expression of the idea that shared agency can emerge from a structured combination of individual capacities, provided the coordination mechanism (the routing) is sufficiently rich.

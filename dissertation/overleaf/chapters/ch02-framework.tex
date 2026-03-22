@@ -1,0 +1,268 @@
+\chapter{The Learning Framework}
+\label{ch:framework}
+
+This chapter develops a mathematical framework for multi-agent learning that motivates the convergence results of Chapter~\ref{ch:results}. We define the data pipeline (\S\ref{sec:pipeline}), derive the gradient decomposition into embedding and predictor components (\S\ref{sec:gradient-decomp}), decompose the expected risk over binary partitions (\S\ref{sec:risk-decomp}), and extend the framework to multiple agents (\S\ref{sec:multi-agent-framework}), arriving at a taxonomy that classifies different learning algorithms and ensemble methods by their comparative advantage.
+
+
+%% ========================================================================
+\section{The Data Pipeline}
+\label{sec:pipeline}
+%% ========================================================================
+
+We model a learner as a composition of two parametric maps operating on structured data.
+
+\begin{definition}[Data pipeline]
+\label{def:pipeline}
+A learning pipeline consists of:
+\begin{enumerate}[label=(\roman*)]
+    \item An \emph{observation space} $O$ and an observation $\mathcal{X} \in O$;
+    \item A \emph{proposition map} $\tau: O \to \Pi$, producing a structured representation $X = \tau(\mathcal{X})$ in a proposition space $\Pi$;
+    \item A parametric \emph{embedding} $\phi_\psi: \Pi \to \mathbb{R}^m$ with parameters $\psi \in \mathbb{R}^p$, producing a feature vector $\mathbf{X} = \phi_\psi(X)$;
+    \item A \emph{true causal map} $f: \mathbb{R}^m \to \mathbb{R}^k$ (unknown), defining the target $Y = f(\mathbf{X})$;
+    \item A parametric \emph{predictor} $\hat{f}_\theta: \mathbb{R}^m \to \mathbb{R}^k$ with parameters $\theta \in \mathbb{R}^l$, producing predictions $\hat{Y} = \hat{f}_\theta(\mathbf{X})$;
+    \item A loss function $\mathcal{L}: \mathbb{R}^k \times \mathbb{R}^k \to \mathbb{R}$, continuously differentiable, with $\mathcal{L}(Y, \hat{Y}) = \mathcal{L}(f(\mathbf{X}_\psi), \hat{f}_\theta(\mathbf{X}_\psi))$.
+\end{enumerate}
+We write $\beta = (\theta, \psi) \in \mathbb{R}^{l+p}$ for the full parameter vector.
+\end{definition}
+
+The pipeline separates two distinct learning tasks: \emph{what to represent} (the embedding $\phi_\psi$) and \emph{how to predict} (the predictor $\hat{f}_\theta$). This separation is natural in modern ML architectures: in a transformer, $\psi$ are the embedding/encoder parameters and $\theta$ are the prediction head parameters; in a GBM with engineered features, $\psi$ encodes the feature construction and $\theta$ the tree ensemble.
+
+
+%% ========================================================================
+\section{Gradient Decomposition}
+\label{sec:gradient-decomp}
+%% ========================================================================
+
+The embedding-predictor separation produces structurally different gradients for each parameter group.
+
+\begin{proposition}[Predictor gradient]
+\label{prop:theta-grad}
+Since $Y = f(\mathbf{X}_\psi)$ does not depend on $\theta$:
+\begin{equation}
+\label{eq:theta-grad}
+    \nabla_\theta \mathcal{L} = \frac{\partial \mathcal{L}}{\partial \hat{Y}} \cdot \frac{\partial \hat{f}_\theta(\mathbf{X}_\psi)}{\partial \theta} \in \mathbb{R}^{1 \times l}.
+\end{equation}
+This is standard backpropagation: only the learned predictor contributes.
+\end{proposition}
+
+\begin{proposition}[Embedding gradient]
+\label{prop:psi-grad}
+Both arguments of $\mathcal{L}$ depend on $\psi$ through $\mathbf{X}_\psi = \phi_\psi(X)$. By the multivariate chain rule:
+\begin{equation}
+\label{eq:psi-grad}
+\boxed{
+    \nabla_\psi \mathcal{L} = \underbrace{\frac{\partial \mathcal{L}}{\partial Y} \cdot \frac{\partial f}{\partial \mathbf{X}} \cdot \frac{\partial \phi_\psi}{\partial \psi}}_{\text{through } f \text{ (inaccessible)}} + \underbrace{\frac{\partial \mathcal{L}}{\partial \hat{Y}} \cdot \frac{\partial \hat{f}_\theta}{\partial \mathbf{X}} \cdot \frac{\partial \phi_\psi}{\partial \psi}}_{\text{through } \hat{f}_\theta \text{ (computable)}} \in \mathbb{R}^{1 \times p}.
+}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+$\mathcal{L}(\psi) = \mathcal{L}(f(\phi_\psi(X)),\, \hat{f}_\theta(\phi_\psi(X)))$. Both $f \circ \phi_\psi$ and $\hat{f}_\theta \circ \phi_\psi$ depend on $\psi$:
+\[
+    \nabla_\psi \mathcal{L} = \frac{\partial \mathcal{L}}{\partial Y} \nabla_\psi Y + \frac{\partial \mathcal{L}}{\partial \hat{Y}} \nabla_\psi \hat{Y} = \frac{\partial \mathcal{L}}{\partial Y} \frac{\partial f}{\partial \mathbf{X}} \frac{\partial \phi_\psi}{\partial \psi} + \frac{\partial \mathcal{L}}{\partial \hat{Y}} \frac{\partial \hat{f}_\theta}{\partial \mathbf{X}} \frac{\partial \phi_\psi}{\partial \psi}. \qedhere
+\]
+\end{proof}
+
+\begin{remark}[The inaccessible term]
+\label{rem:inaccessible}
+The first term in~\eqref{eq:psi-grad} requires $\partial f / \partial \mathbf{X}$---the Jacobian of the \emph{true} causal map. If $f$ is unknown (the standard case), this term is inaccessible. In practice, the embedding gradient is approximated by the second term alone, introducing a systematic bias. This bias vanishes only when $\hat{f}_\theta = f$ (perfect prediction) or when $\partial \mathcal{L}/\partial Y = 0$ (which requires special loss structure). The inaccessible term can be estimated if the causal structure of $f$ is known---e.g., through Pearl's do-calculus when $f$ decomposes along a known DAG.
+\end{remark}
+
+
+%% ========================================================================
+\section{Risk Decomposition}
+\label{sec:risk-decomp}
+%% ========================================================================
+
+\subsection{Expected risk and the exploration-exploitation decomposition}
+
+When observations $\mathcal{X}$ are drawn from a distribution $p_\theta$ over $O$ that depends on $\theta$ (e.g., in RL, where the policy determines which states are visited), the expected risk is:
+\begin{equation}
+\label{eq:expected-risk}
+    R(\theta, \psi) = \mathbb{E}_{\mathcal{X} \sim p_\theta}\!\left[\mathcal{L}\bigl(f(\phi_\psi(\tau(\mathcal{X}))),\; \hat{f}_\theta(\phi_\psi(\tau(\mathcal{X})))\bigr)\right].
+\end{equation}
+
+\begin{proposition}[Exploration-exploitation decomposition]
+\label{prop:reinforce-decomp}
+If $p_\theta$ depends on $\theta$, the gradient decomposes as:
+\begin{equation}
+\label{eq:reinforce-decomp}
+\boxed{
+    \nabla_\theta R = \underbrace{\mathbb{E}_{p_\theta}\!\left[\mathcal{L}(Y, \hat{Y}) \cdot \nabla_\theta \log p_\theta(\mathcal{X})\right]}_{\text{exploration (REINFORCE)}} + \underbrace{\mathbb{E}_{p_\theta}\!\left[\nabla_\theta \mathcal{L}(Y, \hat{Y})\right]}_{\text{exploitation (backprop)}}.
+}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+$\nabla_\theta R = \nabla_\theta \int_O \mathcal{L} \cdot p_\theta \, d\mathcal{X} = \int_O \mathcal{L} \cdot \nabla_\theta p_\theta \, d\mathcal{X} + \int_O \nabla_\theta \mathcal{L} \cdot p_\theta \, d\mathcal{X}$.
+Using the log-derivative trick $\nabla_\theta p_\theta = p_\theta \cdot \nabla_\theta \log p_\theta$ on the first term gives~\eqref{eq:reinforce-decomp}. \qedhere
+\end{proof}
+
+The exploration term adjusts \emph{where} in $O$ the learner looks (score-weighted loss); the exploitation term adjusts \emph{how well} the learner predicts given what it sees. This is precisely the Policy Gradient Theorem (Appendix~\ref{app:pgt}) when $\theta$ parametrises a policy and $\mathcal{L}$ is the negative reward.
+
+
+\subsection{Binary partition of the risk}
+
+Let $\Pi = W \cup S$ be any binary partition of the proposition space (e.g., true vs.\ false propositions, in-distribution vs.\ out-of-distribution, easy vs.\ hard examples). The expected risk decomposes:
+
+\begin{equation}
+\label{eq:ws-decomp}
+    R(\theta, \psi) = \underbrace{P_W \cdot \mathbb{E}[\mathcal{L} \mid X \in W]}_{R_W} + \underbrace{P_S \cdot \mathbb{E}[\mathcal{L} \mid X \in S]}_{R_S},
+\end{equation}
+where $P_W = P_\theta(\tau^{-1}(W))$ and $P_S = 1 - P_W$.
+
+\begin{proposition}[Risk Taylor expansion over partition]
+\label{prop:taylor-partition}
+Let $Y^* \in \mathbb{R}^k$ be a reference prediction and $\delta = \hat{Y} - Y^*$. Taylor-expanding $\mathcal{L}(Y, Y^* + \delta)$ in $\delta$:
+\begin{equation}
+\label{eq:risk-taylor}
+\boxed{
+\begin{aligned}
+    R(\theta, \psi) &\approx \underbrace{P_W \mathbb{E}[\mathcal{L}(Y, Y^*) \mid W] + P_S \mathbb{E}[\mathcal{L}(Y, Y^*) \mid S]}_{\text{irreducible loss at reference}} \\
+    &\quad + \underbrace{P_W \mathbb{E}[\nabla_{\hat{Y}} \mathcal{L}^\top \delta \mid W] + P_S \mathbb{E}[\nabla_{\hat{Y}} \mathcal{L}^\top \delta \mid S]}_{\text{bias (first-order correction)}} \\
+    &\quad + \underbrace{\tfrac{1}{2} P_W \mathbb{E}[\delta^\top H_{\hat{Y}} \delta \mid W] + \tfrac{1}{2} P_S \mathbb{E}[\delta^\top H_{\hat{Y}} \delta \mid S]}_{\text{variance / curvature (second-order correction)}},
+\end{aligned}
+}
+\end{equation}
+where $H_{\hat{Y}} = \nabla^2_{\hat{Y}} \mathcal{L}(Y, Y^*)$ is the Hessian of the loss.
+\end{proposition}
+
+Each row decomposes separately over the partition. This gives six terms, each with a distinct interpretation: three sources of error (irreducible, bias, variance) $\times$ two subpopulations ($W, S$).
+
+
+\subsection{Model taxonomy by comparative advantage}
+\label{subsec:taxonomy}
+
+The decomposition~\eqref{eq:risk-taylor} provides a principled taxonomy for comparing models. Given two models $A$ and $B$:
+
+\begin{definition}[Comparative advantage]
+\label{def:comparative-advantage}
+Model $A$ has \emph{comparative advantage} over model $B$ on partition element $W$ if $R_W^A < R_W^B$, even if $R^A > R^B$ overall. An \emph{ensemble} that routes to $A$ on $W$ and $B$ on $S$ achieves $R_{\mathrm{ens}} = P_W R_W^A + P_S R_S^B \leq \min(R^A, R^B)$.
+\end{definition}
+
+This is the multi-agent learning analogue of Ricardo's comparative advantage: agents should specialise where they have lower relative error, not lower absolute error. The risk decomposition makes this precise:
+
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lll}
+\hline
+\textbf{Error source} & \textbf{Reduced by} & \textbf{Algorithm} \\
+\hline
+Bias on $W$ & Better predictor $\hat{f}_\theta$ & Backpropagation \\
+Bias on $S$ & Better predictor $\hat{f}_\theta$ & Backpropagation \\
+Variance on $W$ & More data / evidence weighting & EWPG (Chapter~\ref{ch:results}) \\
+Variance on $S$ & More data / evidence weighting & EWPG (Chapter~\ref{ch:results}) \\
+Irreducible on $W$ & Better embedding $\phi_\psi$ & Representation learning \\
+Irreducible on $S$ & Better embedding $\phi_\psi$ & Representation learning \\
+\hline
+\end{tabular}
+\end{center}
+
+
+\subsection{Parameter-space Hessian decomposition}
+
+Expanding $R$ in parameter space around a stationary point $\theta^*$ where $\nabla_\theta R(\theta^*) = 0$:
+\begin{equation}
+\label{eq:param-taylor}
+    R(\theta^* + \delta_\theta) \approx R(\theta^*) + \tfrac{1}{2} \delta_\theta^\top \bigl(\underbrace{H_W^\theta}_{W\text{-curvature}} + \underbrace{H_S^\theta}_{S\text{-curvature}}\bigr) \delta_\theta,
+\end{equation}
+where $H_A^\theta = \nabla^2_\theta R_A(\theta^*)$ for $A \in \{W, S\}$. The eigenspectra of $H_W^\theta$ and $H_S^\theta$ separately reveal whether the learner's parameter sensitivity comes from getting $W$ right or $S$ right---a diagnostic unavailable from the combined Hessian $H^\theta = H_W^\theta + H_S^\theta$.
+
+
+%% ========================================================================
+\section{Extension to Multiple Agents}
+\label{sec:multi-agent-framework}
+%% ========================================================================
+
+Now let there be $N$ agents, indexed $i = 1, \ldots, N$. Each agent $i$ has its own:
+\begin{itemize}
+    \item Embedding $\phi_{\psi_i}: \Pi \to \mathbb{R}^{m_i}$ with parameters $\psi_i$,
+    \item Predictor $\hat{f}_{\theta_i}$ with parameters $\theta_i$,
+    \item Sampling distribution $p_{\theta_i}$ over $O$,
+    \item \emph{Weight of evidence} $V_i(\mathcal{X}) > 0$, measuring how much data supports its predictions.
+\end{itemize}
+
+\subsection{Evidence-weighted multi-agent risk}
+
+Define the \emph{pooled weight of evidence}:
+\begin{equation}
+\label{eq:pooled-evidence}
+    V_{\mathrm{pool}}(\mathcal{X}) = \sum_{i=1}^N \alpha_i V_i(\mathcal{X}),
+\end{equation}
+where $\alpha_i \geq 0$ are credibility weights. The multi-agent risk augments the prediction loss with an evidence-seeking penalty:
+\begin{equation}
+\label{eq:multi-agent-risk}
+    R_{\mathrm{multi}}(\Theta, \Psi) = \sum_{i=1}^N \omega_i R_i(\theta_i, \psi_i) + \mu \cdot V_{\mathrm{pool}}^{-1},
+\end{equation}
+where $\omega_i$ are agent importance weights and $\mu > 0$ trades off prediction quality against evidentiary robustness. The gradient for agent $i$ decomposes as:
+\begin{equation}
+\label{eq:five-component}
+\boxed{
+    \nabla_{\theta_i} R_{\mathrm{multi}} = \omega_i\Bigl[\underbrace{\mathbb{E}[\mathcal{L}_i \cdot s_{\theta_i}]}_{\text{exploration}} + \underbrace{\mathbb{E}[\nabla_{\theta_i} \mathcal{L}_i]}_{\text{exploitation}}\Bigr] + \underbrace{\omega_i \mu(-V_i^{-2} \nabla_{\theta_i} V_i)}_{\text{evidence seeking}} + \underbrace{\sum_{j \neq i} \frac{\partial R_i}{\partial \theta_j} \frac{\partial \theta_j'}{\partial \theta_i}}_{\text{opponent shaping}},
+}
+\end{equation}
+where $s_{\theta_i} = \nabla_{\theta_i} \log p_{\theta_i}$ is the score function.
+
+
+\subsection{Risk decomposition for multi-agent systems}
+\label{subsec:six-way}
+
+Define agent $i$'s \emph{effective domain} as the set of propositions for which it has sufficient evidence: $\Pi_N^i = \{X \in \Pi \mid V_i(X) \geq V_{\min}\}$, and let $\Pi_U^i = \Pi \setminus \Pi_N^i$ be the complement. Define the \emph{collective blind spot} as $B = \bigcap_i B_i$, where $B_i$ is the set of propositions agent $i$ cannot resolve.
+
+The multi-agent risk admits a six-way decomposition:
+\begin{equation}
+\label{eq:six-way}
+\boxed{
+    R_{\mathrm{multi}} = \underbrace{R_{W \cap \Pi_N \cap B^c} + R_{S \cap \Pi_N \cap B^c}}_{\text{learnable (gradient descent)}} + \underbrace{R_{W \cap \Pi_N \cap B} + R_{S \cap \Pi_N \cap B}}_{\text{blind-spot-limited}} + \underbrace{R_{W \cap \Pi_U} + R_{S \cap \Pi_U}}_{\text{evidence-limited}}.
+}
+\end{equation}
+
+Only the first two terms are reducible by standard gradient descent. The middle pair requires agents to communicate complementary information---each agent $i$ may resolve propositions in $B_j \setminus B_i$ that agent $j$ cannot, and vice versa. The last pair requires increasing the weight of evidence through more data or better observation.
+
+\begin{remark}[Connection to the convergence results]
+\label{rem:connection}
+The two contributions of Chapter~\ref{ch:results} map precisely onto this decomposition:
+\begin{itemize}
+    \item \textbf{Evidence-weighted PG} addresses the evidence-limited terms ($R_{W \cap \Pi_U}$, $R_{S \cap \Pi_U}$): agents with heterogeneous evidence quality scale their gradient updates to avoid acting on unreliable estimates, reducing variance in the Lyapunov analysis by $\operatorname{HM}(V)/\operatorname{AM}(V)$.
+    \item \textbf{Opponent-shaping PG} addresses the blind-spot-limited terms ($R_{W \cap \Pi_N \cap B}$, $R_{S \cap \Pi_N \cap B}$): by modelling opponents' learning dynamics, agents expand their effective convergence basin beyond what independent learning achieves.
+\end{itemize}
+The learnable terms are already addressed by standard PG~\cite{giannou2022}. A complete multi-agent gradient would additionally include a consensus alignment term for the evidence-limited terms, which we leave to future work.
+\end{remark}
+
+
+%% ========================================================================
+\section{Instantiation in Stochastic Games}
+\label{sec:instantiation}
+%% ========================================================================
+
+We now show how the general learning framework specialises to the episodic stochastic game setting of Giannou et al.~\cite{giannou2022}, which is the concrete domain for the convergence results of Chapter~\ref{ch:results}.
+
+\paragraph{Mapping the pipeline.} In an $N$-player stochastic game $\mathcal{G} = (\mathcal{S}, \mathcal{N}, \{\mathcal{A}_i\}, P, \zeta, \rho)$:
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lll}
+\hline
+\textbf{Framework} & \textbf{Stochastic game} & \textbf{Role} \\
+\hline
+Observation $\mathcal{X}$ & Episode trajectory $\tau = (s_t, \alpha_t, r_t)_{t \leq T}$ & Raw experience \\
+Proposition $X = \tau(\mathcal{X})$ & State-action-reward sequence & Structured data \\
+Embedding $\phi_\psi(X)$ & State encoding (identity in tabular case) & Feature representation \\
+Predictor $\hat{f}_\theta$ & Policy $\pi_\theta: \mathcal{S} \to \Delta(\mathcal{A})$ & Decision rule \\
+True map $f$ & Optimal policy $\pi^*$ (Nash) & Unknown target \\
+Loss $\mathcal{L}$ & Negative reward $-R_i(s, \alpha_i, \alpha_{-i})$ & Per-step cost \\
+Sampling dist.\ $p_\theta$ & Trajectory distribution under $\pi_\theta$ & Exploration \\
+Evidence weight $V_i$ & Sample budget or inverse gradient variance & Data quality \\
+\hline
+\end{tabular}
+\end{center}
+
+\paragraph{Recovering the Policy Gradient Theorem.} Under this mapping, the exploration-exploitation decomposition~\eqref{eq:reinforce-decomp} becomes:
+\begin{equation}
+\label{eq:pgt-from-framework}
+    \nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta}\!\left[R(\tau) \cdot \nabla_\theta \log \pi_\theta(\tau)\right],
+\end{equation}
+which is the standard Policy Gradient Theorem (proved in Appendix~\ref{app:pgt}). The REINFORCE estimator samples a single trajectory $\tau$ and uses $R(\tau) \cdot \sum_t \nabla_\theta \log \pi_\theta(a_t | s_t)$ as a stochastic gradient. The high variance of this estimator---which scales as $\mathcal{O}(1/\kappa)$ where $\kappa = \min_{s,a} \pi(a|s)$ is the minimum action probability---is exactly the noise term $U_n$ in the Giannou et al.\ framework.
+
+\paragraph{The episodic random-stopping formulation.} Giannou et al.\ consider games where episodes terminate with probability $\zeta_{s,\alpha} > 0$ at each step. The value function for agent $i$ is $V_{i,s}(\pi) = \mathbb{E}_{\tau \sim \text{MDP}}[\sum_{t=0}^{T(\tau)} R_i(s_t, \alpha_t) \mid s_0 = s]$, and the expected risk under the initial state distribution $\rho$ is $V_{i,\rho}(\pi) = \mathbb{E}_{s \sim \rho}[V_{i,s}(\pi)]$. This is the multi-agent risk $R_{\mathrm{multi}}$ of~\eqref{eq:multi-agent-risk} with the evidence-seeking and alignment terms set to zero.
+
+\paragraph{The inaccessible gradient in RL.} The inaccessible term $\partial f / \partial \mathbf{X}$ in the embedding gradient~\eqref{eq:psi-grad} corresponds to the derivative of the \emph{optimal} policy with respect to state features---information that requires knowing the optimal policy itself. In practice, this term is estimated through temporal-difference learning or ignored entirely. The multi-agent setting adds a further inaccessible term: the derivative of agent $i$'s reward through agent $j$'s policy, which LOLA approximates via first-order Taylor expansion (see \S\ref{sec:lola-conv}).

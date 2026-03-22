@@ -1,0 +1,97 @@
+% Chapter 4: Proof of the Policy Gradient Theorem
+
+\chapter{Proof of the Policy Gradient Theorem}
+\label{ch:pgt-proof}
+
+We now prove Theorem~\ref{thm:pgt}. The argument, due to \cite{sutton2018rl} (see also \cite{williams1992} for an earlier derivation in the REINFORCE setting), uses only the product rule and the Bellman equation, yet yields a remarkable result: the gradient of the performance measure can be written without differentiating the on-policy state distribution. We first state the assumptions required for the proof, then present the argument in full detail.
+
+\section{Assumptions}
+\label{sec:pgt-assumptions}
+
+The proof of the Policy Gradient Theorem rests on the following conditions.
+
+\begin{enumerate}[label=(\roman*)]
+  \item \emph{Finite MDP.}\; The state space~$\mathcal{S}$ and action space~$\mathcal{A}$ are finite, as in Definition~\ref{def:mdp}. (The result extends to compact or countable spaces under additional regularity; see Remark~\ref{rem:measure-returns}.)
+  \item \emph{Differentiable policy.}\; The parametrised policy $\pi(a\mid s,\bm{\theta})$ is differentiable with respect to~$\bm{\theta}$ for all $(s,a) \in \mathcal{S}\times\mathcal{A}$ and all~$\bm{\theta}$.
+  \item \emph{Fixed environment dynamics.}\; The transition function~$\mathcal{P}$ and reward function~$\mathcal{R}$ do not depend on the policy parameters~$\bm{\theta}$. This is the single-agent assumption that will be relaxed in the multi-agent setting.
+  \item \emph{Bounded rewards.}\; There exists $R_{\max}<\infty$ such that $|\mathcal{R}(s,a,s')|\le R_{\max}$ for all $(s,a,s')$. Together with $\gamma<1$, this ensures that all value functions are bounded and that the infinite series in the proof converge absolutely.
+\end{enumerate}
+
+\section{The Proof}
+\label{sec:pgt-proof-body}
+
+\begin{proof}[Proof of Theorem~\ref{thm:pgt}]
+We suppress the explicit dependence on~$\bm{\theta}$, writing $\pi(a\mid s)$ for $\pi(a\mid s,\bm{\theta})$. All gradients are with respect to~$\bm{\theta}$.
+
+\medskip\noindent\textbf{Step 1 (Product rule).}\quad
+Recall from~\eqref{eq:v-from-q} that $v_\pi(s) = \sum_a \pi(a\mid s)\,q_\pi(s,a)$. Since both $\pi$ and~$q_\pi$ depend on~$\bm{\theta}$, differentiating via the product rule gives:
+\begin{equation}\label{eq:grad-v-step1}
+  \nabla v_\pi(s) = \sum_a \bigl[\nabla\pi(a\mid s)\,q_\pi(s,a) + \pi(a\mid s)\,\nabla q_\pi(s,a)\bigr].
+\end{equation}
+The first term inside the sum captures the direct effect of changing $\bm{\theta}$ on the action probabilities; the second captures the indirect effect through changes in the action-value function.
+
+\medskip\noindent\textbf{Step 2 (Differentiating the Bellman equation).}\quad
+To handle $\nabla q_\pi(s,a)$, we use the Bellman equation for the action-value function~\eqref{eq:bellman-q}:
+\[
+  q_\pi(s,a) = \sum_{s'\in\mathcal{S}} \mathcal{P}(s'\mid s,a)\bigl[\mathcal{R}(s,a,s') + \gamma\, v_\pi(s')\bigr].
+\]
+By assumption~(iii), neither $\mathcal{P}$ nor $\mathcal{R}$ depends on~$\bm{\theta}$. The only $\bm{\theta}$-dependence on the right-hand side is through~$v_\pi(s')$. Differentiating:
+\begin{equation}\label{eq:grad-q}
+  \nabla q_\pi(s,a)
+  = \sum_{s'\in\mathcal{S}} \mathcal{P}(s'\mid s,a)\bigl[\underbrace{\nabla\mathcal{R}(s,a,s')}_{=\,0} + \gamma\,\nabla v_\pi(s')\bigr]
+  = \gamma\sum_{s'\in\mathcal{S}}\mathcal{P}(s'\mid s,a)\,\nabla v_\pi(s').
+\end{equation}
+This is the step where the fixed-environment assumption is used most directly.
+
+\medskip\noindent\textbf{Step 3 (Substitution and recursion).}\quad
+Substituting~\eqref{eq:grad-q} into~\eqref{eq:grad-v-step1}:
+\begin{align}
+  \nabla v_\pi(s)
+  &= \sum_a \nabla\pi(a\mid s)\,q_\pi(s,a) + \sum_a \pi(a\mid s)\,\gamma\sum_{s'}\mathcal{P}(s'\mid s,a)\,\nabla v_\pi(s') \notag \\
+  &= \sum_a \nabla\pi(a\mid s)\,q_\pi(s,a) + \gamma\sum_{s'}\underbrace{\left[\sum_a \pi(a\mid s)\,\mathcal{P}(s'\mid s,a)\right]}_{=:\,P_\pi(s'\mid s)}\nabla v_\pi(s'). \label{eq:grad-v-substituted}
+\end{align}
+Define the shorthand
+\[
+  \phi(s) := \sum_a \nabla\pi(a\mid s)\,q_\pi(s,a),
+\]
+which collects all the ``direct gradient'' contributions at state~$s$, and let $P_\pi(s'\mid s) = \sum_a \pi(a\mid s)\,\mathcal{P}(s'\mid s,a)$ denote the one-step state-to-state transition probability under policy~$\pi$. Then~\eqref{eq:grad-v-substituted} becomes the recursion:
+\begin{equation}\label{eq:grad-v-recursive}
+  \nabla v_\pi(s) = \phi(s) + \gamma\sum_{s'\in\mathcal{S}} P_\pi(s'\mid s)\,\nabla v_\pi(s').
+\end{equation}
+
+\medskip\noindent\textbf{Step 4 (Unrolling the recursion).}\quad
+Equation~\eqref{eq:grad-v-recursive} is a linear recursion in~$\nabla v_\pi$. We unroll it by repeatedly substituting on the right-hand side. After one substitution:
+\begin{align*}
+  \nabla v_\pi(s)
+  &= \phi(s) + \gamma\sum_{s'} P_\pi(s'\mid s)\Bigl[\phi(s') + \gamma\sum_{s''} P_\pi(s''\mid s')\,\nabla v_\pi(s'')\Bigr] \\
+  &= \phi(s) + \gamma\sum_{s'} P_\pi(s'\mid s)\,\phi(s') + \gamma^2\sum_{s''}\underbrace{\left[\sum_{s'} P_\pi(s'\mid s)\,P_\pi(s''\mid s')\right]}_{=\,P_\pi^{(2)}(s''\mid s)}\nabla v_\pi(s'').
+\end{align*}
+In general, writing $P_\pi^{(k)}(x\mid s) = \Pr\{S_{t+k}=x\mid S_t=s,\pi\}$ for the $k$-step transition probability, and continuing the expansion:
+\begin{equation}\label{eq:unrolled}
+  \nabla v_\pi(s) = \sum_{k=0}^{\infty}\gamma^k\sum_{x\in\mathcal{S}} P_\pi^{(k)}(x\mid s)\,\phi(x).
+\end{equation}
+Note that $P_\pi^{(0)}(x\mid s)=\mathbf{1}[x=s]$ (the identity), so the $k=0$ term recovers~$\phi(s)$ as expected. The series converges absolutely because $\|\phi(x)\|$ is bounded (it involves products of bounded quantities) and $\sum_k\gamma^k<\infty$.
+
+\medskip\noindent\textbf{Step 5 (Applying to the performance measure).}\quad
+The performance measure is $J(\bm{\theta})=v_\pi(s_0)$, so we set $s=s_0$ in~\eqref{eq:unrolled}:
+\begin{align}
+  \nabla J(\bm{\theta})
+  &= \sum_{k=0}^{\infty}\gamma^k\sum_{x\in\mathcal{S}} P_\pi^{(k)}(x\mid s_0)\,\phi(x) \notag \\
+  &= \sum_{x\in\mathcal{S}} \underbrace{\left[\sum_{k=0}^{\infty}\gamma^k P_\pi^{(k)}(x\mid s_0)\right]}_{=:\,\eta(x)} \phi(x) \notag \\
+  &= \sum_s \eta(s)\sum_a q_\pi(s,a)\,\nabla\pi(a\mid s). \label{eq:pgt-eta-form}
+\end{align}
+The interchange of sums is justified by absolute convergence. Finally, since $\eta(s)\ge 0$ and $\sum_s\eta(s)>0$, we may normalise:
+\begin{equation}\label{eq:pgt-final}
+  \nabla J(\bm{\theta}) \propto \sum_{s\in\mathcal{S}} \mu_\pi(s)\sum_{a\in\mathcal{A}} q_\pi(s,a)\,\nabla_{\bm{\theta}}\,\pi(a\mid s,\bm{\theta}),
+\end{equation}
+where $\mu_\pi(s)=\eta(s)/\sum_{s'}\eta(s')$ is the on-policy distribution defined in~\eqref{eq:mu-pi}.
+\end{proof}
+
+\section{Discussion}
+\label{sec:ch4-discussion}
+
+\paragraph{Why the state distribution disappears.} The central insight of the proof is that $\nabla_{\bm{\theta}}\mu_\pi$ does not appear in the final expression. Intuitively, the effect of~$\bm{\theta}$ on the state distribution is absorbed into the weighting by~$\eta(s)$ through the recursive unrolling in Step~4. This absorption is possible precisely because $\mathcal{P}$ and~$\mathcal{R}$ are independent of~$\bm{\theta}$ (assumption~(iii)), so that the only $\bm{\theta}$-dependence in the Bellman equation for~$q_\pi$ enters through~$v_\pi$. Were the transition dynamics to depend on~$\bm{\theta}$---as they effectively do in the multi-agent setting, where the ``environment'' includes other agents' evolving policies---the step from~\eqref{eq:grad-q} would produce additional terms, and the clean recursive structure would break down. This is precisely the complication that the Meta-MAPG theorem of Chapter~\ref{ch:meta-mapg} addresses.
+
+\paragraph{Connection to practical algorithms.} The Policy Gradient Theorem is what makes algorithms like \textsc{reinforce}~\cite{williams1992} and actor-critic methods work. The key practical consequence is that the gradient~\eqref{eq:pgt-final} can be written as an expectation under the agent's own behaviour: $\nabla J \propto \mathbb{E}_{s\sim\mu_\pi,\,a\sim\pi}[q_\pi(s,a)\,\nabla\ln\pi(a\mid s)]$ via the log-derivative trick (see Section~\ref{subsec:reinforce}). This expectation can be estimated from sample trajectories without ever computing $\mu_\pi$ explicitly. In practice, replacing $q_\pi(s,a)$ with the sample return~$G_t$ yields REINFORCE; replacing it with the TD error~$\delta_t$ yields actor-critic. The theorem guarantees that both are unbiased estimators of the true gradient (up to a positive scalar), despite having access only to sampled experience.
+
+\paragraph{The proportionality constant.} The proportionality in~\eqref{eq:pgt-final} hides a positive normalisation factor $\sum_s\eta(s) = 1/(1-\gamma)$. In the episodic case with $\gamma=1$, this factor becomes the expected episode length and the proportionality becomes an equality when $\eta(s)$ is replaced by the (unnormalised) expected number of visits~\cite{sutton2018rl}. Since gradient ascent is invariant to positive rescaling of the gradient, the proportionality does not affect the optimisation.
