@@ -130,45 +130,6 @@ where $H_{\hat{Y}} = \nabla^2_{\hat{Y}} \mathcal{L}(Y, Y^*)$ is the Hessian of t
 Each row decomposes separately over the partition. This gives six terms, each with a distinct interpretation: three sources of error (irreducible, bias, variance) $\times$ two subpopulations ($W, S$).
 
 
-\subsection{Model taxonomy by comparative advantage}
-\label{subsec:taxonomy}
-
-The decomposition~\eqref{eq:risk-taylor} provides a principled taxonomy for comparing models. Given two models $A$ and $B$:
-
-\begin{definition}[Comparative advantage]
-\label{def:comparative-advantage}
-Model $A$ has \emph{comparative advantage} over model $B$ on partition element $W$ if $R_W^A < R_W^B$, even if $R^A > R^B$ overall. An \emph{ensemble} that routes to $A$ on $W$ and $B$ on $S$ achieves $R_{\mathrm{ens}} = P_W R_W^A + P_S R_S^B \leq \min(R^A, R^B)$.
-\end{definition}
-
-This is the multi-agent learning analogue of Ricardo's comparative advantage: agents should specialise where they have lower relative error, not lower absolute error. The risk decomposition makes this precise:
-
-\begin{center}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{lll}
-\hline
-\textbf{Error source} & \textbf{Reduced by} & \textbf{Algorithm} \\
-\hline
-Bias on $W$ & Better predictor $\hat{f}_\theta$ & Backpropagation \\
-Bias on $S$ & Better predictor $\hat{f}_\theta$ & Backpropagation \\
-Variance on $W$ & More data / evidence weighting & EWPG (Chapter~\ref{ch:results}) \\
-Variance on $S$ & More data / evidence weighting & EWPG (Chapter~\ref{ch:results}) \\
-Irreducible on $W$ & Better embedding $\phi_\psi$ & Representation learning \\
-Irreducible on $S$ & Better embedding $\phi_\psi$ & Representation learning \\
-\hline
-\end{tabular}
-\end{center}
-
-
-\subsection{Parameter-space Hessian decomposition}
-
-Expanding $R$ in parameter space around a stationary point $\theta^*$ where $\nabla_\theta R(\theta^*) = 0$:
-\begin{equation}
-\label{eq:param-taylor}
-    R(\theta^* + \delta_\theta) \approx R(\theta^*) + \tfrac{1}{2} \delta_\theta^\top \bigl(\underbrace{H_W^\theta}_{W\text{-curvature}} + \underbrace{H_S^\theta}_{S\text{-curvature}}\bigr) \delta_\theta,
-\end{equation}
-where $H_A^\theta = \nabla^2_\theta R_A(\theta^*)$ for $A \in \{W, S\}$. The eigenspectra of $H_W^\theta$ and $H_S^\theta$ separately reveal whether the learner's parameter sensitivity comes from getting $W$ right or $S$ right---a diagnostic unavailable from the combined Hessian $H^\theta = H_W^\theta + H_S^\theta$.
-
-
 %% ========================================================================
 \section{Extension to Multiple Agents}
 \label{sec:multi-agent-framework}

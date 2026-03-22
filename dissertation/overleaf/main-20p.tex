@@ -78,11 +78,21 @@ Chapter~\ref{ch:framework} develops the learning framework. Chapter~\ref{ch:resu
 
 \input{chapters/ch03-convergence}
 
-\input{chapters/ch10-cooperative-communication}
+%% Cooperative PG and Blessing are integrated as sections of ch03.
+%% Selected experiments inline; full suite in Appendix.
 
-\input{chapters/ch12-blessing-dimensionality}
+\chapter{Experimental Validation}
+\label{ch:simulations}
 
-\input{chapters/ch04-simulations}
+We validate the four main results on $N$-player matrix games. Full experimental details, additional games, and application experiments are in Appendices~\ref{app:sims}--\ref{app:applications}. Here we present the key confirmations.
+
+\paragraph{EW-PG variance improvement.} On 2-player Matching Pennies with heterogeneous noise $V = [V_1, V_2]$, we measure the empirical variance ratio $\sigma_w^2/\sigma_{\text{std}}^2$ against the theoretical $\operatorname{HM}(V)/\operatorname{AM}(V)$ for evidence ratios $r = V_1/V_2 \in [1, 20]$. The empirical curve tracks the theoretical prediction closely (Appendix~\ref{app:sims}, Fig.~1).
+
+\paragraph{LOLA basin enlargement.} We sweep initial conditions on the 2-simplex for Matching Pennies and Battle of the Sexes, classifying convergence/divergence. LOLA-PG doubles the basin of attraction in Matching Pennies (a zero-sum game where spectral reinforcement holds). No enlargement in Battle of the Sexes (a coordination game), confirming the spectral condition is necessary.
+
+\paragraph{Self-knowledge bottleneck.} In a 4-player team game (2v2), we compare Standard PG, Coop-PG, and EW-Coop-PG under three conditions: all articulate (noise 0.1), mixed (team 1 articulate, team 2 ``vibing''), and all vibing (noise 2.0). Coop-PG improves payoff in all conditions, but the improvement degrades for vibing agents, confirming Corollary~\ref{cor:bottleneck-ch3}.
+
+\paragraph{Sparsity curriculum.} On a 50-action game with 2 optimal actions, Sparse-EW-PG reduces the fraction of active actions from 1.0 to 0.085 (91.5\% sparsification), while Standard PG remains at 0.97. The L1 regularisation discovers the sparse support within 500 episodes.
 
 
 % ======================================================================
@@ -113,6 +123,14 @@ We extended the convergence framework of Giannou et al.~\cite{giannou2022} with 
 \input{chapters/ch04-pg-theorem-proof}
 
 \input{chapters/ch06-meta-mapg-theorem}
+
+\chapter{Full Experimental Suite}
+\label{app:sims}
+\input{chapters/ch04-simulations}
+
+\input{chapters/ch10-cooperative-communication}
+
+\input{chapters/ch12-blessing-dimensionality}
 
 \input{chapters/ch13-applications}
 

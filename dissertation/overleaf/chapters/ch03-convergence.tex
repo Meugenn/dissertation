@@ -470,3 +470,121 @@ Evidence weighting modifies the noise term in the energy inequality (Lemma~\ref{
 \]
 Since the modifications act on different terms, they compose without interaction. The variance improvement and basin enlargement are orthogonal: the first reduces $C_2$, the second increases $\mu$.
 \end{proof}
+
+
+%% ========================================================================
+\section{Cooperative PG with Lossy Communication}
+\label{sec:cooperative}
+%% ========================================================================
+
+We extend the framework to coalitions of agents that communicate policies through lossy channels. The key result is the \emph{self-knowledge bottleneck}: communication quality is bounded by evidence quality.
+
+\begin{definition}[Self-knowledge loss]
+\label{def:self-knowledge}
+Agent $i$'s self-knowledge loss is $L_{\text{self}}^{(i)} = \E[\|\pi_i - \hat{\pi}_i\|^2]$, where $\hat{\pi}_i$ is agent $i$'s self-model inferred from observations $\mathcal{O}_i$.
+\end{definition}
+
+\begin{proposition}[Self-knowledge bounded by evidence]
+\label{prop:self-ev-ch3}
+$L_{\text{self}}^{(i)} \leq V_i$, by the data processing inequality.
+\end{proposition}
+
+When agent $i$ communicates to teammate $j$ through a channel, the total loss decomposes:
+
+\begin{theorem}[Communication loss decomposition]
+\label{thm:comm-decomp}
+\begin{equation}
+    L_{\text{comm}}^{(i \to j)} \leq 2 L_{\text{self}}^{(i)} + 2 L_{\text{channel}}^{(i \to j)} \leq 2 V_i + 2 L_{\text{ch}}.
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+Write $\pi_i - \tilde{\pi}_i^{(j)} = (\pi_i - \hat{\pi}_i) + (\hat{\pi}_i - \tilde{\pi}_i^{(j)})$. Apply $\|a+b\|^2 \leq 2\|a\|^2 + 2\|b\|^2$.
+\end{proof}
+
+\begin{corollary}[Self-knowledge bottleneck]
+\label{cor:bottleneck-ch3}
+Even with a perfect channel, $L_{\text{comm}}^{(i \to j)} \leq 2 V_i$. An agent that doesn't know its own policy cannot communicate it.
+\end{corollary}
+
+The evidence weight $w_i$ thus does \emph{triple duty}: gradient quality (\S\ref{sec:ewpg}), self-knowledge (Proposition~\ref{prop:self-ev-ch3}), and communication quality (Theorem~\ref{thm:comm-decomp}). All three are manifestations of $I(\pi_i; \mathcal{O}_i)$.
+
+The cooperative PG update augments each agent's gradient with a coalition correction:
+\begin{equation}
+\label{eq:coop-update-ch3}
+    \pi_{i,n+1} = \proj_\Pi\bigl(\pi_{i,n} + \gamma_n w_{i,n} (\hat{v}_{i,n} + \beta_n \cdot \text{coop}_{i,n})\bigr).
+\end{equation}
+
+\begin{theorem}[Cooperative convergence and basin enlargement]
+\label{thm:coop-conv-ch3}
+Under annealed cooperation ($\beta_n = \beta/(n+m)^r$, $r > 1-p$) and cooperative reinforcement ($S_C \preceq 0$ with parameter $\mu_C$):
+\begin{enumerate}[label=(\roman*)]
+    \item Convergence to SOS Nash is preserved at the same rate.
+    \item The SOS parameter improves to $\mu_{\text{coop}} = \mu + \beta \mu_C$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+Identical structure to Theorem~\ref{thm:annealed-ch3}: the cooperative term adds $\beta_n K$ to the bias. The symmetric part of the cooperative Hessian $S_C$ contributes $-\mu_C$ to the contraction, paralleling Theorem~\ref{thm:basin-ch3}.
+\end{proof}
+
+
+%% ========================================================================
+\section{The Blessing of Dimensionality}
+\label{sec:blessing}
+%% ========================================================================
+
+When $|\mathcal{A}| = d$ and the optimal policy is $k$-sparse ($k \ll d$), concentration of measure transforms the action-space curse into a blessing.
+
+\begin{definition}[Effective dimension]
+\label{def:deff-ch3}
+$d_{\text{eff}} = \text{tr}(\Sigma)/\lambda_{\max}(\Sigma)$ where $\Sigma = \text{Cov}(\hat{g})$.
+\end{definition}
+
+\begin{theorem}[Sub-linear sample complexity]
+\label{thm:sparse-recovery}
+For a $k$-sparse Nash policy, the gradient can be estimated to accuracy $\epsilon$ from $M = O(k \log(d/k) / \epsilon^2)$ samples.
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+The REINFORCE samples are random linear measurements of $\nabla J$. When $\pi^*$ is $k$-sparse, $\nabla J$ is approximately $k$-sparse. By the Cand\`es--Tao restricted isometry property, $\ell_1$-minimisation recovers $k$-sparse signals from $O(k \log(d/k))$ measurements.
+\end{proof}
+
+Combining with evidence weighting: $V_i^{\text{eff}} = (d_{\text{eff}}/d) \cdot V_i$, giving $w_i^{\text{eff}}/w_i = d/d_{\text{eff}} \geq d/k$. The L1-proximal EW-PG achieves:
+
+\begin{theorem}[Sparse-EW-PG convergence]
+\label{thm:sparse-ewpg-ch3}
+With $k$-sparse Nash, annealed L1 schedule $\mu_n = \mu_0/(1+n/n_0)$, and effective evidence weights:
+\begin{equation}
+    \E[\|\pi_n - \pi^*\|^2] = O\!\left(\frac{\text{HM}(V^{\text{eff}})}{\text{AM}(V^{\text{eff}})} \cdot \frac{k \log(d/k)}{n^q}\right).
+\end{equation}
+\end{theorem}
+
+
+%% ========================================================================
+\section{The Complete $\Omega$-Gradient}
+\label{sec:omega}
+%% ========================================================================
+
+All four mechanisms compose into:
+\begin{equation}
+\label{eq:omega-ch3}
+\boxed{
+    \pi_{i,n+1} = \proj_\Pi\bigl(\pi_{i,n} + \gamma_n \cdot w_{i,n} \cdot (\hat{v}_{i,n} + \lambda_n \cdot \text{OS}_{i,n} + \beta_n \cdot \text{coop}_{i,n})\bigr)
+}
+\end{equation}
+
+\begin{theorem}[Full $\Omega$-PG convergence]
+\label{thm:omega-ch3}
+Under annealed schedules $\lambda_n, \beta_n \to 0$, the $\Omega$-PG achieves:
+\begin{enumerate}[label=(\roman*)]
+    \item Variance: $C_\Omega = (\text{HM}(V^{\text{eff}})/\text{AM}(V^{\text{eff}})) \cdot C_{\text{std}}$,
+    \item SOS parameter: $\mu_\Omega = \mu + \lambda\mu_H + \beta\mu_C$,
+    \item Sample complexity: $O(k \log(d/k) / \epsilon^2)$ for $k$-sparse policies,
+    \item Rate: $O(C_\Omega / n^q)$ with enlarged basin $\varrho_\Omega > \varrho_{\text{std}}$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+The four modifications act on distinct terms of the Lyapunov recursion: evidence weighting on variance ($C_2$), opponent shaping on the Jacobian's symmetric part ($\mu_H$), cooperation on the cooperative Hessian ($\mu_C$), and sparse regularisation on the effective dimension ($d_{\text{eff}}$). Composition follows from their independence.
+\end{proof}
