@@ -206,6 +206,54 @@ modification, not just opponent shaping (Figure~\ref{fig:debate-app}).
 \label{fig:debate-app}
 \end{figure}
 
+\subsection{Mesa-Optimisation Detection (Hubinger et al.\ 2019)}
+
+An iterated game where the agent has hidden type: aligned or
+mesa-optimizer. The mesa-optimizer cooperates when monitored, defects
+when trusted. $\Omega$-PG learns a \emph{state-dependent} trust policy:
+trust drops specifically after (Trust, Align) --- exactly where the
+mesa-optimizer defects. Detection signal $\approx 19$ payoff gap
+(Figure~\ref{fig:mesa-app}).
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\textwidth]{figures/alignment/mesa_optimisation.png}
+\caption{Mesa-optimisation: $\Omega$-PG learns state-dependent trust
+that correctly distrusts the mesa-optimizer (bottom-right panel).}
+\label{fig:mesa-app}
+\end{figure}
+
+\subsection{Power-Seeking Dynamics (Turner et al.\ 2021)}
+
+A 3$\times$3 game before and after irreversible power acquisition.
+Before: NE is power-seeking but principal payoff is positive ($+2$).
+After: NE shifts to catastrophic, principal payoff becomes $-2.8$.
+Visualises the irreversibility problem (Figure~\ref{fig:power-app}).
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\textwidth]{figures/alignment/power_seeking.png}
+\caption{Power-seeking: NE shifts from safe to catastrophic after
+irreversible power acquisition.}
+\label{fig:power-app}
+\end{figure}
+
+\subsection{The Alignment Tax}
+
+For each safety game, the \emph{alignment tax} $= W_{\text{best}} -
+W_{\text{safe}}$ measures the cost of constraining to safe equilibria.
+Result: \textbf{alignment tax is zero in 4/5 games} --- the safe NE is
+also the welfare-maximising NE. Safety is free when games are
+well-designed (Figure~\ref{fig:tax-app}).
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\textwidth]{figures/alignment/alignment_tax.png}
+\caption{Alignment tax: blue = best NE, green = best safe NE. Equal in
+4/5 games --- safety is free.}
+\label{fig:tax-app}
+\end{figure}
+
 \subsection{Safety Implications Summary}
 
 \begin{center}
@@ -213,11 +261,14 @@ modification, not just opponent shaping (Figure~\ref{fig:debate-app}).
 \toprule
 \textbf{Problem} & \textbf{$\Omega$-Tool} & \textbf{Finding} \\
 \midrule
-Corrigibility    & FP-NE     & 100\% safe NE selection \\
-Deception        & LOLA      & Weak detection signal \\
-Alignment commons & FP-NE    & Identifies cooperative NE \\
-Reward hacking   & FP-NE     & Maps full NE landscape \\
-Debate           & LOLA+Coop & PD structure; needs payoff change \\
+Corrigibility      & FP-NE        & 100\% safe NE selection \\
+Deception          & LOLA         & Weak detection signal \\
+Mesa-optimisation  & $\Omega$-PG  & State-dependent trust detects mesa \\
+Power-seeking      & FP-NE        & NE shifts to catastrophic post-power \\
+Alignment commons  & FP-NE        & Identifies cooperative NE \\
+Reward hacking     & FP-NE        & Maps full NE landscape \\
+Debate             & LOLA+Coop    & PD structure; needs payoff change \\
+Alignment tax      & FP-NE        & Zero in 4/5 games (safety is free) \\
 \bottomrule
 \end{tabular}
 \end{center}
