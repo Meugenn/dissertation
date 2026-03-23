@@ -509,9 +509,7 @@ Even with a perfect channel, $L_{\text{comm}}^{(i \to j)} \leq 2 V_i$. An agent 
 
 The evidence weight $w_i$ thus does \emph{triple duty}: gradient quality (\S\ref{sec:ewpg}), self-knowledge (Proposition~\ref{prop:self-ev-ch3}), and communication quality (Theorem~\ref{thm:comm-decomp}). All three are manifestations of $I(\pi_i; \mathcal{O}_i)$.
 
-\begin{remark}[The vibing horseshoe]
-The self-knowledge loss further decomposes into \emph{causal depth} $L_{\text{causal}}$ (does the agent understand why it acts?) and \emph{expressibility} $L_{\text{express}}$ (can it communicate that understanding?). The need to articulate is horseshoe-shaped: $\mathcal{N}_{\text{express}} = L_{\text{causal}}(1 - L_{\text{causal}})$, maximal at intermediate understanding. A ``vibing'' agent with $L_{\text{causal}} \approx 0$ (deep causal self-knowledge) needs no verbal explanation --- it communicates through action. The dangerous failure mode is the \emph{confabulator}: low $L_{\text{express}}$ (fluent) but high $L_{\text{causal}}$ (causally shallow). See the companion paper for the full development.
-\end{remark}
+The self-knowledge loss further decomposes into two independent dimensions, developed in \S\ref{sec:vibing-horseshoe} below.
 
 The cooperative PG update augments each agent's gradient with a coalition correction:
 \begin{equation}
@@ -592,3 +590,121 @@ Under annealed schedules $\lambda_n, \beta_n \to 0$, the $\Omega$-PG achieves:
 \begin{proof}
 The four modifications act on distinct terms of the Lyapunov recursion: evidence weighting on variance ($C_2$), opponent shaping on the Jacobian's symmetric part ($\mu_H$), cooperation on the cooperative Hessian ($\mu_C$), and sparse regularisation on the effective dimension ($d_{\text{eff}}$). Composition follows from their independence.
 \end{proof}
+
+
+%% ========================================================================
+\section{The Vibing Scale}
+\label{sec:vibing-horseshoe}
+%% ========================================================================
+
+The self-knowledge loss $L_{\text{self}}$ from \S\ref{sec:cooperative} conflates two independent phenomena. We decompose it, revealing a horseshoe structure with implications for alignment and coalition design.
+
+\subsection{Causal Depth and Expressibility}
+
+\begin{definition}[Causal depth]
+\label{def:causal-depth-ch3}
+Let $\mathcal{M}_i^*$ be the true structural causal model generating agent $i$'s decisions, and $\hat{\mathcal{M}}_i$ the agent's internal causal self-model. The causal depth loss is:
+\begin{equation}
+    L_{\text{causal}}^{(i)} = \sup_{X,\, \text{do}(A=a)} \norm{P_{\mathcal{M}_i^*}(Y \mid \text{do}(A=a), X) - P_{\hat{\mathcal{M}}_i}(Y \mid \text{do}(A=a), X)}^2.
+\end{equation}
+This is zero when the agent has a perfect causal self-model ($\mathcal{D}_i = 3$ in Pearl's hierarchy) and maximal when the agent has no causal model ($\mathcal{D}_i = 0$).
+\end{definition}
+
+\begin{definition}[Expressibility loss]
+\label{def:express-ch3}
+Given agent $i$'s causal self-model $\hat{\mathcal{M}}_i$ and a communication channel with capacity $C$:
+\begin{equation}
+    L_{\text{express}}^{(i)} = \inf_{\text{encoding } \sigma} D_{\text{SCM}}\bigl(\hat{\mathcal{M}}_i,\; \text{Decode}(\sigma(\hat{\mathcal{M}}_i))\bigr).
+\end{equation}
+\end{definition}
+
+\begin{theorem}[Self-knowledge decomposition]
+\label{thm:vibing-decomp}
+\begin{equation}
+    L_{\text{comm}}^{(i \to j)} \leq 2\, L_{\text{causal}}^{(i)} + 2\, L_{\text{express}}^{(i)}.
+\end{equation}
+Communication quality is independently bounded by each dimension.
+\end{theorem}
+
+
+\subsection{The Horseshoe}
+
+\begin{definition}[Expressibility need]
+\label{def:horseshoe}
+\begin{equation}
+    \mathcal{N}_{\text{express}}^{(i)} = L_{\text{causal}}^{(i)} \cdot (1 - L_{\text{causal}}^{(i)}).
+\end{equation}
+\end{definition}
+
+This is maximised at $L_{\text{causal}} = 1/2$ (intermediate understanding) and zero at both extremes:
+
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lcll}
+\hline
+\textbf{Pearl Level} & $L_{\text{causal}}$ & \textbf{Regime} & \textbf{Expressibility need} \\
+\hline
+Level 0 (noise) & $\approx 1$ & Nothing to say & Zero \\
+Level 1 (confabulator) & $\approx 0.7$ & Fluent but causally shallow & Medium \\
+Level 2 (articulator) & $\approx 0.5$ & Fragile, over-expresses & \textbf{Maximum} \\
+Level 3a (teacher) & $\approx 0.2$ & Can explain, chooses to & Medium \\
+Level 3b (vibing) & $\approx 0$ & No need to explain & Zero \\
+\hline
+\end{tabular}
+\end{center}
+
+Both tails produce the same observable behaviour (terse, inarticulate) for opposite reasons. A ``vibing'' agent ($\mathcal{D} = 3$, $L_{\text{causal}} \approx 0$) has understanding so deep and compressed that action IS communication. It does not \emph{lack} the ability to explain --- it has \emph{transcended the need}. The master craftsman, the experienced trader, the athlete in flow.
+
+
+\subsection{Two Communication Channels}
+
+\begin{proposition}[Behavioural channel]
+\label{prop:tacit-channel}
+An agent with $L_{\text{causal}} \approx 0$ and $L_{\text{express}} > 0$ communicates through a \emph{behavioural channel}: other agents observe its actions and infer its causal model via inverse reinforcement learning. This channel:
+\begin{enumerate}[label=(\roman*)]
+    \item has capacity scaling with the number of observed actions,
+    \item requires the receiver to have $\mathcal{D} \geq 2$ (interventional reasoning) to decode,
+    \item is robust to confabulation (actions cannot be faked like words).
+\end{enumerate}
+\end{proposition}
+
+The verbal channel (bounded by $L_{\text{express}}$) and the behavioural channel (bounded by the observer's causal depth) are \emph{complementary}. Coalition design must support both.
+
+
+\subsection{The Confabulator and the Alignment Bound}
+
+\begin{definition}[Confabulation score]
+\label{def:confab-ch3}
+\begin{equation}
+    \text{Confab}_i = D_{\text{SCM}}\bigl(\hat{\mathcal{M}}_i^{\text{expressed}},\; \hat{\mathcal{M}}_i^{\text{behavioural}}\bigr)
+\end{equation}
+where $\hat{\mathcal{M}}_i^{\text{expressed}}$ is what the agent \emph{says} (elicited through explanation) and $\hat{\mathcal{M}}_i^{\text{behavioural}}$ is what it \emph{does} (inferred from interventions). High confabulation = the agent says one thing and does another.
+\end{definition}
+
+The confabulator ($\mathcal{D} = 1$, low $L_{\text{express}}$, high $\text{Confab}$) is the true alignment danger: it passes verbal oversight (debate, RLHF, constitutional AI) while having no causal self-understanding.
+
+\begin{theorem}[Alignment bound]
+\label{thm:alignment-bound-ch3}
+The achievable alignment $A_i$ of agent $i$ through any communication-based method is bounded by:
+\begin{equation}
+    A_i \leq f(C) \cdot (1 - L_{\text{causal}}^{(i)})
+\end{equation}
+where $f(C)$ is increasing in channel capacity $C$. When $L_{\text{causal}} = 1$, $A_i = 0$ regardless of expressibility: \emph{you cannot align what does not understand itself, no matter how well it speaks.}
+\end{theorem}
+
+\begin{proof}
+Any communication-based alignment method receives agent $i$'s expressed model $\hat{\mathcal{M}}_i^{\text{exp}}$, which is at best $\hat{\mathcal{M}}_i$ (the internal model, subject to $L_{\text{express}}$ distortion). The alignment quality is bounded by the quality of $\hat{\mathcal{M}}_i$ as a model of $\mathcal{M}_i^*$, which is $1 - L_{\text{causal}}$. The channel capacity $f(C)$ bounds the transmission fidelity but cannot create causal content that doesn't exist in the sender.
+\end{proof}
+
+\subsection{Refined Evidence Weight}
+
+The evidence weight from \S\ref{sec:ewpg} should incorporate causal depth:
+\begin{equation}
+\label{eq:refined-weight-ch3}
+    w_i^{\text{refined}} = \frac{V_{\min}}{V_i} \cdot (1 - L_{\text{causal}}^{(i)}).
+\end{equation}
+This ensures that confabulators (low $V_i$ but high $L_{\text{causal}}$ --- confidently wrong) are downweighted, while vibing agents (who may have high $L_{\text{express}}$ but low $L_{\text{causal}}$) are valued for their behavioural contributions.
+
+\begin{remark}[The alignment trap]
+Communication-based training (RLHF, debate, constitutional AI) optimises for low $L_{\text{express}}$ without increasing $\mathcal{D}$. This moves agents from noise (harmless) to confabulator (dangerous): learning to \emph{sound} aligned without learning to \emph{be} aligned. The vibing scale identifies this trap formally. Detection requires interventional probing --- comparing expressed and behavioural causal models --- not verbal evaluation.
+\end{remark}
