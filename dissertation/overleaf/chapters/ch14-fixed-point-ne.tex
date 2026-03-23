@@ -135,3 +135,89 @@ Three paths forward:
     \item \textbf{FP-NE on the repeated game}: search for fixed points of the \emph{iterated} best-response map (5-state tabular policies), where TFT-like strategies are genuine NE.
     \item \textbf{Homotopy methods}: track the QRE correspondence as $\tau \to 0$, watching for bifurcation points where cooperative and defective equilibria separate.
 \end{enumerate}
+
+
+\section{The Topological Cooperation Theorem}
+
+\begin{theorem}[Topological Cooperation]
+For any finite game with $\geq 2$ Nash equilibria, the cooperation gap
+$\Delta = W_{\text{best}} - W_{\text{rand}} \geq 0$, with equality iff
+all NE have identical social welfare. Moreover, $\Delta > 0$ for generic
+games (by Harsanyi's structure theorem and Sard's theorem).
+\end{theorem}
+
+\textbf{Empirical validation}: 2,000 random games ($d = 2,3,4,5$).
+$\Delta > 0$ in \textbf{100\%} of 613 multi-NE games, $p < 0.001$
+at every size. The ``mechanism'' is pure computation: search the
+fixed-point set, select the best element. No payoff modification, no
+communication, no commitments (Figure~\ref{fig:theorem-app}).
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\textwidth]{figures/theorem/cooperation_theorem.png}
+\caption{Topological Cooperation Theorem: 100\% positive gap across 2,000 games.}
+\label{fig:theorem-app}
+\end{figure}
+
+
+\section{Application to AI Safety}
+
+\subsection{Corrigibility: Safe Equilibrium Selection}
+
+The corrigibility game (Principal: Allow/Correct; Agent: Comply/Resist)
+has a safe NE (Correct, Comply) and an unsafe NE. Independent PG
+converges to the safe NE in only 63\% of runs. \textbf{FP-NE achieves
+100\%} by discovering both NE and initialising from the safe one
+(Figure~\ref{fig:corrig-app}).
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\textwidth]{figures/safety/corrigibility.png}
+\caption{Corrigibility: 100\% safe selection via FP-NE (vs 63\% for PG).}
+\label{fig:corrig-app}
+\end{figure}
+
+\subsection{Deceptive Alignment Detection}
+
+An iterated game where the deceptive agent cooperates under monitoring
+and defects when trusted. LOLA shows a weak detection signal (slightly
+higher monitoring rate against the deceptive agent). This confirms
+deceptive alignment is genuinely hard to detect from behaviour alone
+(Figure~\ref{fig:deceptive-app}).
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\textwidth]{figures/safety/deceptive_alignment.png}
+\caption{Deceptive alignment: LOLA provides weak but non-zero detection.}
+\label{fig:deceptive-app}
+\end{figure}
+
+\subsection{AI Debate as Prisoner's Dilemma}
+
+Two debaters choosing Truthful/Deceptive face a PD: mutual truthfulness
+is socially optimal but mutual deception is the unique NE. No method
+sustains truthfulness, confirming that debate protocols require payoff
+modification, not just opponent shaping (Figure~\ref{fig:debate-app}).
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\textwidth]{figures/safety/debate.png}
+\caption{AI Debate: PD structure confirmed. Truthfulness unsustainable.}
+\label{fig:debate-app}
+\end{figure}
+
+\subsection{Safety Implications Summary}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Problem} & \textbf{$\Omega$-Tool} & \textbf{Finding} \\
+\midrule
+Corrigibility    & FP-NE     & 100\% safe NE selection \\
+Deception        & LOLA      & Weak detection signal \\
+Alignment commons & FP-NE    & Identifies cooperative NE \\
+Reward hacking   & FP-NE     & Maps full NE landscape \\
+Debate           & LOLA+Coop & PD structure; needs payoff change \\
+\bottomrule
+\end{tabular}
+\end{center}
