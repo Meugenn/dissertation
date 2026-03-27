@@ -70,6 +70,24 @@ I propose an **iterative approach** with increasing complexity, where each stage
 
 **Feature selection and interactions:** At each stage, I would use permutation importance, SHAP values, and partial dependence plots to understand which features and interactions drive predictions. This guides both model refinement and business insight.
 
+### Incorporating Human Expert Knowledge
+
+Restaurant staff and experienced riders hold valuable tacit knowledge about prep times that our data cannot directly observe — a kitchen manager knows that a new hire slows service, that the oven is unreliable, or that a particular dish is deceptively complex. Riders learn which restaurants consistently run late. This knowledge is typically accurate in *direction* but poorly calibrated in *magnitude* (humans are good at "this will be slow" but bad at "this will take exactly 23 minutes"). The goal is to extract the directional signal while letting the model handle calibration.
+
+**Approach 1 — Restaurant-provided prep-time estimates as a feature:**
+- At order acknowledgement, restaurants already indicate an estimated prep time (or could be prompted to). Rather than using this as the prediction itself, feed it as an *input feature* to the model. The model learns how to debias it — e.g. if Restaurant X consistently says "15 minutes" but actually takes 22, the model learns that restaurant's optimism factor. This is a simple Bayesian prior update: the restaurant's estimate is the prior, the model adjusts it using historical data as the likelihood.
+
+**Approach 2 — Structured elicitation of kitchen parameters:**
+- Periodically ask restaurant managers to provide structured information the data cannot reveal: number of kitchen staff per shift, number of cooking stations, whether they batch-cook or cook-to-order, peak capacity (max simultaneous orders before quality degrades). These become slow-moving features in the model — updated monthly or on request, not per-order. This captures the "capital" and "staffing" latent variables from the causal diagram that we otherwise can only proxy through historical prep-time patterns.
+
+**Approach 3 — Rider feedback as a real-time signal:**
+- Riders who arrive at restaurants observe the kitchen state directly — they can see if the kitchen is overwhelmed, if orders are piling up, or if the restaurant is quiet. A lightweight feedback mechanism (e.g. "kitchen looked: calm / busy / overwhelmed" at pickup) provides a ground-truth busyness signal that complements our concurrent-order-count proxy. Over time, this builds a rider-sourced busyness index per restaurant that can be used as a real-time feature.
+
+**Approach 4 — Bayesian prior from expert knowledge:**
+- In the mixed-effects model (Stage 3), restaurant-level random effects can be initialised with informative priors derived from restaurant self-reported characteristics rather than starting from the population mean. A restaurant that reports 2 cooking stations and 1 chef gets a different prior than one reporting 6 stations and 4 chefs. This is especially valuable for **new restaurants** with little historical data — the cold-start problem — where expert-informed priors prevent the model from defaulting to a generic population average.
+
+**Key principle:** Human knowledge enters as *priors and features*, never as the final prediction. The model's job is to calibrate human intuition against observed data. Over time, as the model accumulates more data for a restaurant, the data dominates and the human prior fades naturally (exactly as Bayesian updating prescribes). For new restaurants or unusual situations (first day of Ramadan, post-renovation reopening), the human signal is most valuable precisely when the model has least data.
+
 ### Model Evaluation
 
 **Statistical metrics:**
