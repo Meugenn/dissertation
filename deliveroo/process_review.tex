@@ -1,0 +1,269 @@
+\documentclass{article}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{mdframed}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\geometry{margin=2.5cm}
+
+% ── colours ──────────────────────────────────────────────────
+\definecolor{codebg}{rgb}{0.95,0.95,0.95}
+\definecolor{codegreen}{rgb}{0,0.50,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.45,0,0.70}
+\definecolor{codered}{rgb}{0.72,0,0}
+\definecolor{suggblue}{RGB}{13,71,161}
+
+% ── code listing style ───────────────────────────────────────
+\lstdefinestyle{py}{
+    backgroundcolor=\color{codebg},
+    commentstyle=\color{codegreen}\itshape,
+    keywordstyle=\color{codepurple}\bfseries,
+    stringstyle=\color{codered},
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    keepspaces=true,
+    numbers=left,
+    numberfirstline=true,
+    numberstyle=\tiny\color{codegray},
+    numbersep=7pt,
+    showstringspaces=false,
+    tabsize=4,
+    language=Python,
+    frame=single,
+    rulecolor=\color{gray!35},
+    xleftmargin=1.5em,
+    framexleftmargin=1.5em,
+}
+\lstset{style=py}
+
+% ── callout boxes ────────────────────────────────────────────
+\newmdenv[linecolor=red!60, linewidth=1.5pt,
+          backgroundcolor=red!3,
+          innertopmargin=4pt,innerbottommargin=4pt,
+          innerleftmargin=8pt,innerrightmargin=8pt,
+          skipabove=6pt,skipbelow=4pt]{bugbox}
+
+\newmdenv[linecolor=orange!70, linewidth=1.5pt,
+          backgroundcolor=orange!3,
+          innertopmargin=4pt,innerbottommargin=4pt,
+          innerleftmargin=8pt,innerrightmargin=8pt,
+          skipabove=6pt,skipbelow=4pt]{issuebox}
+
+\newmdenv[linecolor=suggblue, linewidth=1.5pt,
+          backgroundcolor=suggblue!4,
+          innertopmargin=4pt,innerbottommargin=4pt,
+          innerleftmargin=8pt,innerrightmargin=8pt,
+          skipabove=6pt,skipbelow=4pt]{suggbox}
+
+% ── helpers ──────────────────────────────────────────────────
+\newcommand{\lineno}[1]{\textbf{L#1:} }
+\newcommand{\linesno}[2]{\textbf{L#1--#2:} }
+\newcommand{\bug}{\textcolor{red!70!black}{\textbf{[BUG]}}\space}
+\newcommand{\issue}{\textcolor{orange!80!black}{\textbf{[ISSUE]}}\space}
+\newcommand{\suggestion}{\textcolor{suggblue}{\textbf{[SUGGESTION]}}\space}
+
+% ─────────────────────────────────────────────────────────────
+\title{\textbf{Code Review: \texttt{process.py}}}
+\author{Yevhen Shcherbinin}
+\date{March 2026}
+
+\begin{document}
+\maketitle
+
+\section*{Code Under Review}
+
+\begin{lstlisting}[firstnumber=1]
+import logging
+from json import *
+import sys
+import os
+import pdb
+
+from __future__ import division
+numerical_average = lambda x, y, alpha: x / y
+
+def customerCategoricalFeature(cc):
+    if cc == "High":
+        return 1
+    elif cc == "Medium":
+        return 2
+    elif cc == "Low":
+        return 3
+
+def customerCountryFeature(cc):
+    if cc == "UK":
+        return 1
+    elif cc == "Frances":
+        return 2
+    elif cc == "Australia":
+        return 3
+
+def features(customer_data):
+    if "customer_id" not in customer_data.keys() or type(customer_data["customer_id"]) != int:
+        customer_features = {
+            "customer_id": -1
+        }
+    else:
+        customer_features = {
+            "customer_id": customer_data["customer_id"]
+        }
+
+    list = [
+        customerCategoricalFeature(customer_data["customer_value"]),
+        customerCountryFeature(customer_data["customer_country"]),
+    ]
+
+    if 0 in customer_data["global_visit_count"]:
+        raise Exception("Denominators shouldn't be 0")
+
+    try:
+        # pdb.set_trace()
+        customer_features["numerical_averages"] = list()
+        for index in range(len(customer_data["global_order_count"])):
+            customer_features["numerical_averages"].append(numerical_average(
+                customer_data["global_order_count"][index],
+                customer_data["global_visit_count"][index]
+            ))
+    except:
+        customer_features["numberical_averages"] = []
+
+    customer_features["categorical_features"] = list
+    return customer_features
+
+def processDataFile(input_filename, output_filename):
+    if os.access(input_filename, os.R_OK):
+        with open(input_filename, "r") as f:
+            input_data = f.readlines()
+        g = open(output_filename, 'w')
+        for x in input_data:
+            g.write(dumps(features(loads(x))) + "\n")
+        g.close()
+    else:
+        print("Input file can't be accessed")
+
+input_filename = sys.argv[1]
+output_filename = sys.argv[2]
+print(f"processing features for file: {input_filename}")
+processDataFile(input_filename, output_filename)
+\end{lstlisting}
+
+I verified the review against the provided test data (\texttt{input.txt}). The script \textbf{cannot run successfully} in its current state due to several blocking bugs. Below I classify findings into three severity levels: \textcolor{red!70!black}{\textbf{BUG}} (code is broken), \textcolor{orange!80!black}{\textbf{ISSUE}} (code works but is incorrect or dangerous), and \textcolor{suggblue}{\textbf{SUGGESTION}} (style and maintainability improvements).
+
+% ─────────────────────────────────────────────────────────────
+\section{Blocking Bugs}
+
+\begin{bugbox}
+\bug \lineno{7} \texttt{from \_\_future\_\_ import division} \textbf{must} precede all other imports --- Python raises a \texttt{SyntaxError} otherwise. The script will not load at all. Moreover, in Python~3 true division is the default, so this line can simply be deleted.
+\end{bugbox}
+
+\begin{bugbox}
+\bug \lineno{38} Assigning to the name \texttt{list} shadows Python's built-in \texttt{list} type. This directly causes a \texttt{TypeError} on line~48, where \texttt{list()} is intended to create an empty list but instead tries to call the local variable (a list of two integers) as a function. Rename to \texttt{categorical\_features}.
+\end{bugbox}
+
+\begin{bugbox}
+\bug \lineno{48} Consequence of line~38: \texttt{list()} raises \texttt{TypeError: 'list' object is not callable}. The \texttt{numerical\_averages} key is never populated for any record. The bare \texttt{except} on line~54 silently swallows this error, so the bug manifests as missing data rather than a crash --- the worst kind of failure.
+\end{bugbox}
+
+\begin{bugbox}
+\bug \lineno{55} The fallback key is misspelt \texttt{"numberical\_averages"} (transposed \texttt{i}/\texttt{e}). Combined with the bugs above, the output contains a misspelt key with an empty list while the correctly-spelt key is absent entirely. Downstream consumers reading \texttt{"numerical\_averages"} get \texttt{None}.
+\end{bugbox}
+
+\begin{bugbox}
+\bug \lineno{24} \texttt{"Frances"} is a typo for \texttt{"France"}. All five test records from France silently return \texttt{None} as their country feature because no branch matches.
+\end{bugbox}
+
+% ─────────────────────────────────────────────────────────────
+\section{Non-Blocking Issues}
+
+\begin{issuebox}
+\issue \lineno{1} \texttt{logging} is imported but never used. Remove.
+\end{issuebox}
+
+\begin{issuebox}
+\issue \lineno{2} \texttt{from json import *} --- wildcard imports pollute the namespace and obscure where \texttt{loads}/\texttt{dumps} come from. Use \texttt{import json} and call \texttt{json.loads()}/\texttt{json.dumps()}.
+\end{issuebox}
+
+\begin{issuebox}
+\issue \lineno{5} \texttt{import pdb} and the commented-out \texttt{pdb.set\_trace()} on line~47 are debugging artefacts. Remove both before merging.
+\end{issuebox}
+
+\begin{issuebox}
+\issue \lineno{9} \texttt{numerical\_average} takes an unused third parameter \texttt{alpha}. Python already supports \texttt{x / y} natively --- there is no need for a lambda wrapper. If a weighted average was intended, implement it; otherwise delete the function entirely and inline the division. Also, PEP~8 discourages assigning lambdas to names --- use \texttt{def} if a function is needed.
+\end{issuebox}
+
+\begin{issuebox}
+\issue \linesno{11}{27} Both \texttt{customerCategoricalFeature} and \texttt{customerCountryFeature} return \texttt{None} implicitly when no branch matches (e.g.\ \texttt{"low"} with lowercase `l' in the test data). This inserts silent \texttt{null}s into the output with no warning.
+\end{issuebox}
+
+\begin{issuebox}
+\issue \lineno{43--44} \texttt{raise Exception(...)} is too broad. Use \texttt{ZeroDivisionError} for semantic clarity. Also, this check sits \emph{outside} the \texttt{try} block, so it crashes the entire pipeline instead of being caught and handled.
+\end{issuebox}
+
+\begin{issuebox}
+\issue \lineno{54} Bare \texttt{except:} catches everything including \texttt{KeyboardInterrupt} and \texttt{SystemExit}. Specify the expected types: \texttt{except (TypeError, ZeroDivisionError, KeyError)}.
+\end{issuebox}
+
+\begin{issuebox}
+\issue \linesno{64}{68} The output file \texttt{g} is opened outside a \texttt{with} statement. If line~67 raises an exception, \texttt{g.close()} is never reached, leaving a corrupted partial output. Use a \texttt{with} block.
+\end{issuebox}
+
+\begin{issuebox}
+\issue \linesno{72}{76} Module-level code runs at import time, making the file impossible to unit-test or reuse. Wrap in \texttt{if \_\_name\_\_ == "\_\_main\_\_":} and add argument validation.
+\end{issuebox}
+
+% ─────────────────────────────────────────────────────────────
+\section{Suggestions}
+
+\begin{suggbox}
+\suggestion \textbf{Harmonise the two encoding functions.} Replace both if-elif chains with dictionary lookups via a single generic helper. This is more readable, extensible, and handles unknown values explicitly:
+\begin{lstlisting}[numbers=none]
+CUSTOMER_VALUE_MAP = {"High": 1, "Medium": 2, "Low": 3}
+CUSTOMER_COUNTRY_MAP = {"UK": 1, "France": 2, "Australia": 3}
+
+def encode_feature(mapping, value):
+    if value not in mapping:
+        raise ValueError(f"Unknown feature value: {value!r}")
+    return mapping[value]
+\end{lstlisting}
+\end{suggbox}
+
+\begin{suggbox}
+\suggestion \lineno{28--35} The customer ID check can be simplified to one line using \texttt{dict.get()} and \texttt{isinstance}:
+\begin{lstlisting}[numbers=none]
+cid = customer_data.get("customer_id")
+customer_features = {"customer_id": cid if isinstance(cid, int) else -1}
+\end{lstlisting}
+\end{suggbox}
+
+\begin{suggbox}
+\suggestion \lineno{49} Replace \texttt{for index in range(len(...))} with \texttt{zip}. More Pythonic and guards against length mismatches:
+\begin{lstlisting}[numbers=none]
+averages = [o / v for o, v in zip(order_counts, visit_counts)]
+\end{lstlisting}
+\end{suggbox}
+
+\begin{suggbox}
+\suggestion \textbf{Follow PEP~8 naming.} Rename \texttt{camelCase} functions to \texttt{snake\_case}: \texttt{process\_data\_file}, \texttt{build\_features}, etc.
+\end{suggbox}
+
+\begin{suggbox}
+\suggestion \textbf{Use \texttt{logging} instead of \texttt{print}.} The import is already there. \texttt{logging.info} / \texttt{logging.error} allow configurable severity, timestamps, and output routing --- essential for a production pipeline.
+\end{suggbox}
+
+% ─────────────────────────────────────────────────────────────
+\section{Verification Against Test Data}
+
+Running the script against the provided \texttt{input.txt} with the bugs fixed, two data-level issues emerge:
+
+\begin{enumerate}[leftmargin=1.5em, itemsep=3pt]
+\item \textbf{Record 3} (\texttt{customer\_id: 15}) has \texttt{"customer\_value": "low"} (lowercase). Neither the if-elif chain nor the dictionary lookup matches --- the encoding silently returns \texttt{None}. The code should either normalise case (\texttt{value.capitalize()}) or raise an error.
+\item \textbf{Record 2} (\texttt{customer\_id: 14}) has \texttt{"customer\_country": "France"}, but the code checks for \texttt{"Frances"}. This returns \texttt{None} for all French customers.
+\end{enumerate}
+
+Both issues produce silent data corruption --- the pipeline appears to succeed while outputting incomplete feature vectors. This is the most dangerous class of bug in a production ML pipeline because it degrades model quality without any alert.
+
+\end{document}
