@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scripture Cross-References: Bible &amp; Quran</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a0a;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    overflow-x: hidden;
+  }
+
+  .header {
+    text-align: center;
+    padding: 30px 20px 10px;
+  }
+
+  .header h1 {
+    font-size: 28px;
+    font-weight: 300;
+    letter-spacing: 2px;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+
+  .header p {
+    font-size: 14px;
+    color: #888;
+    max-width: 700px;
+    margin: 0 auto;
+    line-height: 1.5;
+  }
+
+  .controls {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    padding: 15px 20px;
+    flex-wrap: wrap;
+  }
+
+  .controls button {
+    background: #1a1a2e;
+    border: 1px solid #333;
+    color: #ccc;
+    padding: 8px 18px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+  }
+
+  .controls button:hover {
+    background: #2a2a4e;
+    border-color: #555;
+  }
+
+  .controls button.active {
+    border-color: #6c8cff;
+    color: #fff;
+    background: #1a2a5e;
+  }
+
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    padding: 5px 20px 15px;
+    flex-wrap: wrap;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #999;
+  }
+
+  .legend-swatch {
+    width: 20px;
+    height: 3px;
+    border-radius: 2px;
+  }
+
+  .viz-container {
+    position: relative;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  canvas {
+    display: block;
+  }
+
+  .stats {
+    text-align: center;
+    padding: 15px;
+    font-size: 12px;
+    color: #666;
+  }
+
+  .stats span {
+    margin: 0 15px;
+  }
+
+  .tooltip {
+    position: fixed;
+    background: rgba(10, 10, 30, 0.95);
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: #ddd;
+    pointer-events: none;
+    display: none;
+    z-index: 100;
+    max-width: 300px;
+  }
+
+  .section-label {
+    font-size: 11px;
+    text-align: center;
+    padding: 5px;
+    color: #666;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  /* Quran section separator */
+  .quran-header {
+    text-align: center;
+    padding: 10px 20px 5px;
+    margin-top: 10px;
+  }
+  .quran-header h2 {
+    font-size: 20px;
+    font-weight: 300;
+    letter-spacing: 2px;
+    color: #4ecdc4;
+  }
+  .quran-header p {
+    font-size: 13px;
+    color: #666;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>SCRIPTURE CROSS-REFERENCES</h1>
+  <p>340,000 Bible cross-references visualized as arcs, with theological connections to the Quran.
+     Inspired by Chris Harrison's visualization. Data from OpenBible.info (Treasury of Scripture Knowledge).</p>
+</div>
+
+<div class="controls">
+  <button id="btn-all" class="active" onclick="setView('all')">All References</button>
+  <button id="btn-ot" onclick="setView('ot')">Old Testament</button>
+  <button id="btn-nt" onclick="setView('nt')">New Testament</button>
+  <button id="btn-cross" onclick="setView('cross')">OT-NT Cross</button>
+  <button id="btn-quran" onclick="setView('quran')">Bible-Quran</button>
+  <button id="btn-combined" onclick="setView('combined')">Combined View</button>
+</div>
+
+<div class="legend" id="legend-bible">
+  <div class="legend-item">
+    <div class="legend-swatch" style="background: rgba(100,160,255,0.7)"></div>
+    OT &harr; OT
+  </div>
+  <div class="legend-item">
+    <div class="legend-swatch" style="background: rgba(255,100,100,0.7)"></div>
+    NT &harr; NT
+  </div>
+  <div class="legend-item">
+    <div class="legend-swatch" style="background: rgba(180,130,255,0.7)"></div>
+    OT &harr; NT
+  </div>
+  <div class="legend-item">
+    <div class="legend-swatch" style="background: rgba(78,205,196,0.9)"></div>
+    Bible &harr; Quran
+  </div>
+</div>
+
+<div class="viz-container">
+  <canvas id="bibleCanvas"></canvas>
+</div>
+
+<div class="stats" id="stats"></div>
+
+<div class="quran-header">
+  <h2>BIBLE &mdash; QURAN CONNECTIONS</h2>
+  <p>Theological parallels: shared narratives (Creation, Noah, Abraham, Moses, Joseph, Mary, Jesus),
+     ethical teachings, and eschatological visions across the Abrahamic traditions.</p>
+</div>
+
+<div class="viz-container">
+  <canvas id="quranCanvas"></canvas>
+</div>
+
+<div class="stats" id="stats2"></div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ── Global state ──
+let DATA = null;
+let currentView = 'all';
+const DPR = window.devicePixelRatio || 1;
+
+// ── Colors ──
+// Compact format: bibleRefs = [[from, to, type, votes], ...]
+// type: 0=ot_ot, 1=nt_nt, 2=ot_nt
+const TYPE_COLORS = [
+  { r: 100, g: 160, b: 255 },  // 0: ot_ot
+  { r: 255, g: 100, b: 100 },  // 1: nt_nt
+  { r: 180, g: 130, b: 255 },  // 2: ot_nt
+];
+
+const COLORS = {
+  quran:    { r: 78,  g: 205, b: 196 },
+  bg:       '#0a0a0a',
+  bookLabel:'#888',
+  bookTick: '#333',
+  otBg:     'rgba(70,130,220,0.06)',
+  ntBg:     'rgba(220,70,70,0.06)',
+};
+
+function colorStr(c, alpha) {
+  return `rgba(${c.r},${c.g},${c.b},${alpha})`;
+}
+
+// ── Load data ──
+async function loadData() {
+  const resp = await fetch('scripture_data.json');
+  DATA = await resp.json();
+
+  document.getElementById('stats').textContent =
+    `${DATA.bibleRefs.length.toLocaleString()} Bible cross-references shown (filtered by confidence) | ` +
+    `${DATA.totalBibleVerses.toLocaleString()} total verses | 66 books`;
+
+  document.getElementById('stats2').textContent =
+    `${DATA.quranRefs.length} documented Bible-Quran theological parallels | ` +
+    `${DATA.totalQuranVerses.toLocaleString()} Quran verses | 114 surahs`;
+
+  drawBibleViz();
+  drawQuranViz();
+}
+
+// ── Bible arc diagram ──
+function drawBibleViz() {
+  const canvas = document.getElementById('bibleCanvas');
+  const container = canvas.parentElement;
+
+  const W = Math.max(container.clientWidth, 1200);
+  const H = 600;
+  const MARGIN = { left: 40, right: 40, top: 20, bottom: 80 };
+
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(DPR, DPR);
+
+  // Clear
+  ctx.fillStyle = COLORS.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const plotW = W - MARGIN.left - MARGIN.right;
+  const baselineY = H - MARGIN.bottom;
+
+  // Scale: verse position → pixel x
+  function xScale(versePos) {
+    return MARGIN.left + (versePos / DATA.totalBibleVerses) * plotW;
+  }
+
+  // ── Draw testament backgrounds ──
+  const otEnd = DATA.books.filter(b => b.testament === 'OT').reduce((s, b) => s + b.verses, 0);
+  ctx.fillStyle = COLORS.otBg;
+  ctx.fillRect(xScale(0), 0, xScale(otEnd) - xScale(0), baselineY);
+  ctx.fillStyle = COLORS.ntBg;
+  ctx.fillRect(xScale(otEnd), 0, xScale(DATA.totalBibleVerses) - xScale(otEnd), baselineY);
+
+  // ── Draw book labels and ticks ──
+  ctx.strokeStyle = COLORS.bookTick;
+  ctx.lineWidth = 0.5;
+
+  DATA.books.forEach((book, i) => {
+    const x = xScale(book.start);
+    const midX = xScale(book.start + book.verses / 2);
+
+    // Tick
+    ctx.beginPath();
+    ctx.moveTo(x, baselineY);
+    ctx.lineTo(x, baselineY + 5);
+    ctx.stroke();
+
+    // Label
+    ctx.save();
+    ctx.translate(midX, baselineY + 10);
+    ctx.rotate(-Math.PI / 2.5);
+    ctx.fillStyle = book.testament === 'OT' ? '#7799cc' : '#cc7777';
+    ctx.font = '9px system-ui';
+    ctx.textAlign = 'right';
+    ctx.fillText(book.abbr, 0, 0);
+    ctx.restore();
+  });
+
+  // ── Draw baseline ──
+  ctx.strokeStyle = '#444';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(MARGIN.left, baselineY);
+  ctx.lineTo(W - MARGIN.right, baselineY);
+  ctx.stroke();
+
+  // ── Draw bar chart (verse count per book) ──
+  const maxVerses = Math.max(...DATA.books.map(b => b.verses));
+  const barMaxH = 25;
+  DATA.books.forEach(book => {
+    const x1 = xScale(book.start);
+    const x2 = xScale(book.end);
+    const barH = (book.verses / maxVerses) * barMaxH;
+    ctx.fillStyle = book.testament === 'OT' ? 'rgba(70,130,220,0.3)' : 'rgba(220,70,70,0.3)';
+    ctx.fillRect(x1, baselineY - barH, x2 - x1, barH);
+  });
+
+  // ── Filter references by view ──
+  // Compact: [from, to, type, votes] where type: 0=ot_ot, 1=nt_nt, 2=ot_nt
+  let refs = DATA.bibleRefs;
+  if (currentView === 'ot') refs = refs.filter(r => r[2] === 0);
+  else if (currentView === 'nt') refs = refs.filter(r => r[2] === 1);
+  else if (currentView === 'cross') refs = refs.filter(r => r[2] === 2);
+  else if (currentView === 'quran') refs = [];
+
+  // ── Draw arcs ──
+  // Sort by arc size (larger arcs first for layering)
+  refs.sort((a, b) => Math.abs(b[1] - b[0]) - Math.abs(a[1] - a[0]));
+
+  refs.forEach(ref => {
+    const x1 = xScale(Math.min(ref[0], ref[1]));
+    const x2 = xScale(Math.max(ref[0], ref[1]));
+    const midX = (x1 + x2) / 2;
+    const span = x2 - x1;
+    const radius = span / 2;
+
+    // Alpha: lower for dense small arcs, boost high-vote ones
+    let alpha = 0.012 + Math.min(ref[3] / 500, 0.06);
+    if (span < 15) alpha *= 0.4;
+
+    const color = TYPE_COLORS[ref[2]];
+
+    ctx.beginPath();
+    ctx.arc(midX, baselineY, radius, Math.PI, 0, false);
+    ctx.strokeStyle = colorStr(color, alpha);
+    ctx.lineWidth = 0.4;
+    ctx.stroke();
+  });
+
+  // ── Draw Quran connections if in combined view ──
+  if (currentView === 'combined' || currentView === 'quran') {
+    DATA.quranRefs.forEach(ref => {
+      const bx = xScale(ref.biblePos);
+
+      // Draw a vertical ray going up from the Bible position
+      const gradient = ctx.createLinearGradient(bx, baselineY, bx, 20);
+      gradient.addColorStop(0, colorStr(COLORS.quran, 0.6));
+      gradient.addColorStop(1, colorStr(COLORS.quran, 0));
+
+      ctx.beginPath();
+      ctx.moveTo(bx, baselineY);
+      ctx.lineTo(bx, 20);
+      ctx.strokeStyle = gradient;
+      ctx.lineWidth = ref.strength >= 3 ? 1.5 : 0.8;
+      ctx.stroke();
+
+      // Small dot at base
+      ctx.beginPath();
+      ctx.arc(bx, baselineY, 2, 0, Math.PI * 2);
+      ctx.fillStyle = colorStr(COLORS.quran, 0.8);
+      ctx.fill();
+    });
+  }
+
+  // ── Section labels ──
+  ctx.fillStyle = 'rgba(100,150,220,0.4)';
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('OLD TESTAMENT', xScale(otEnd / 2), 15);
+
+  ctx.fillStyle = 'rgba(220,100,100,0.4)';
+  ctx.fillText('NEW TESTAMENT', xScale(otEnd + (DATA.totalBibleVerses - otEnd) / 2), 15);
+}
+
+
+// ── Bible-Quran bridge visualization ──
+function drawQuranViz() {
+  const canvas = document.getElementById('quranCanvas');
+  const container = canvas.parentElement;
+
+  const W = Math.max(container.clientWidth, 1200);
+  const H = 500;
+  const MARGIN = { left: 40, right: 40, top: 60, bottom: 60 };
+
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(DPR, DPR);
+
+  ctx.fillStyle = COLORS.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const plotW = W - MARGIN.left - MARGIN.right;
+  const bibleY = MARGIN.top + 30;       // Bible baseline (top)
+  const quranY = H - MARGIN.bottom - 30; // Quran baseline (bottom)
+  const midY = (bibleY + quranY) / 2;
+
+  // Scales
+  function bibleX(pos) {
+    return MARGIN.left + (pos / DATA.totalBibleVerses) * plotW;
+  }
+  function quranX(pos) {
+    return MARGIN.left + (pos / DATA.totalQuranVerses) * plotW;
+  }
+
+  // ── Bible baseline ──
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(MARGIN.left, bibleY);
+  ctx.lineTo(W - MARGIN.right, bibleY);
+  ctx.stroke();
+
+  // Bible book labels
+  const otEnd = DATA.books.filter(b => b.testament === 'OT').reduce((s, b) => s + b.verses, 0);
+  DATA.books.forEach((book, i) => {
+    const x = bibleX(book.start);
+    const midBX = bibleX(book.start + book.verses / 2);
+
+    // Tick
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x, bibleY - 3);
+    ctx.lineTo(x, bibleY + 3);
+    ctx.stroke();
+
+    // Only label every few books to avoid clutter
+    if (i % 3 === 0 || book.verses > 500) {
+      ctx.fillStyle = book.testament === 'OT' ? '#7799cc' : '#cc7777';
+      ctx.font = '8px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(book.abbr, midBX, bibleY - 8);
+    }
+  });
+
+  // Bible label
+  ctx.fillStyle = '#888';
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText('BIBLE', MARGIN.left, bibleY - 20);
+
+  // Bar chart on Bible baseline
+  const maxBVerses = Math.max(...DATA.books.map(b => b.verses));
+  DATA.books.forEach(book => {
+    const x1 = bibleX(book.start);
+    const x2 = bibleX(book.end);
+    const barH = (book.verses / maxBVerses) * 12;
+    ctx.fillStyle = book.testament === 'OT' ? 'rgba(70,130,220,0.25)' : 'rgba(220,70,70,0.25)';
+    ctx.fillRect(x1, bibleY, x2 - x1, barH);
+  });
+
+  // ── Quran baseline ──
+  ctx.strokeStyle = 'rgba(78,205,196,0.6)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(MARGIN.left, quranY);
+  ctx.lineTo(W - MARGIN.right, quranY);
+  ctx.stroke();
+
+  // Quran surah labels
+  const maxQVerses = Math.max(...DATA.surahs.map(s => s.verses));
+  DATA.surahs.forEach((surah, i) => {
+    const x = quranX(surah.start);
+    const midSX = quranX(surah.start + surah.verses / 2);
+
+    // Tick
+    ctx.strokeStyle = 'rgba(78,205,196,0.3)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x, quranY - 3);
+    ctx.lineTo(x, quranY + 3);
+    ctx.stroke();
+
+    // Bar chart
+    const barH = (surah.verses / maxQVerses) * 12;
+    ctx.fillStyle = 'rgba(78,205,196,0.2)';
+    ctx.fillRect(quranX(surah.start), quranY - barH, quranX(surah.end) - quranX(surah.start), barH);
+
+    // Label major surahs
+    if (surah.verses > 80 || i % 8 === 0) {
+      ctx.fillStyle = 'rgba(78,205,196,0.7)';
+      ctx.font = '8px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(surah.name.substring(0, 10), midSX, quranY + 15);
+    }
+  });
+
+  // Quran label
+  ctx.fillStyle = 'rgba(78,205,196,0.8)';
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText('QURAN', MARGIN.left, quranY + 30);
+
+  // ── Draw connections as bezier curves ──
+  // Group by theme for coloring
+  const themeColors = {
+    creation:     { r: 100, g: 200, b: 100 },
+    creation_of_adam: { r: 100, g: 200, b: 100 },
+    breath_of_life: { r: 100, g: 200, b: 100 },
+    naming_animals: { r: 100, g: 200, b: 100 },
+    garden_eden:  { r: 100, g: 200, b: 100 },
+    temptation:   { r: 180, g: 200, b: 80 },
+    fall_shame:   { r: 180, g: 200, b: 80 },
+    expulsion:    { r: 180, g: 200, b: 80 },
+    divine_command_be: { r: 100, g: 200, b: 100 },
+
+    cain_abel:    { r: 200, g: 100, b: 100 },
+    murder_brother: { r: 200, g: 100, b: 100 },
+    killing_one_soul: { r: 200, g: 100, b: 100 },
+
+    noah_mission: { r: 80, g: 150, b: 255 },
+    build_ark:    { r: 80, g: 150, b: 255 },
+    flood_begins: { r: 80, g: 150, b: 255 },
+    ark_rests:    { r: 80, g: 150, b: 255 },
+    covenant_after_flood: { r: 80, g: 150, b: 255 },
+    noah_surah:   { r: 80, g: 150, b: 255 },
+
+    abraham_tested: { r: 255, g: 200, b: 80 },
+    abraham_idols:  { r: 255, g: 200, b: 80 },
+    abraham_faith:  { r: 255, g: 200, b: 80 },
+    hagar_ishmael:  { r: 255, g: 200, b: 80 },
+    kaaba_building: { r: 255, g: 200, b: 80 },
+    abraham_guests: { r: 255, g: 200, b: 80 },
+    sacrifice_son:  { r: 255, g: 200, b: 80 },
+    ransom_sacrifice: { r: 255, g: 200, b: 80 },
+
+    joseph_dream:   { r: 255, g: 160, b: 80 },
+    brothers_plot:  { r: 255, g: 160, b: 80 },
+    joseph_sold:    { r: 255, g: 160, b: 80 },
+    potiphar_wife:  { r: 255, g: 160, b: 80 },
+    pharaoh_dream:  { r: 255, g: 160, b: 80 },
+    joseph_reveals: { r: 255, g: 160, b: 80 },
+    joseph_reunited: { r: 255, g: 160, b: 80 },
+
+    pharaoh_oppression: { r: 220, g: 100, b: 180 },
+    moses_basket:   { r: 220, g: 100, b: 180 },
+    burning_bush:   { r: 220, g: 100, b: 180 },
+    moses_staff_serpent: { r: 220, g: 100, b: 180 },
+    plagues:        { r: 220, g: 100, b: 180 },
+    parting_sea:    { r: 220, g: 100, b: 180 },
+    pharaoh_drowns: { r: 220, g: 100, b: 180 },
+    commandments:   { r: 220, g: 100, b: 180 },
+    no_other_gods:  { r: 220, g: 100, b: 180 },
+    tablets:        { r: 220, g: 100, b: 180 },
+    golden_calf:    { r: 220, g: 100, b: 180 },
+    manna_quail:    { r: 220, g: 100, b: 180 },
+
+    mary_chosen:    { r: 200, g: 150, b: 255 },
+    annunciation:   { r: 200, g: 150, b: 255 },
+    jesus_announced: { r: 200, g: 150, b: 255 },
+    virgin_conception: { r: 200, g: 150, b: 255 },
+    spirit_conceive: { r: 200, g: 150, b: 255 },
+    birth_jesus:    { r: 200, g: 150, b: 255 },
+    palm_tree:      { r: 200, g: 150, b: 255 },
+    holy_spirit:    { r: 200, g: 150, b: 255 },
+    jesus_miracles: { r: 200, g: 150, b: 255 },
+    word_of_god:    { r: 200, g: 150, b: 255 },
+    crucifixion_question: { r: 200, g: 150, b: 255 },
+    raised_to_god:  { r: 200, g: 150, b: 255 },
+    table_from_heaven: { r: 200, g: 150, b: 255 },
+    comforter_ahmad: { r: 200, g: 150, b: 255 },
+    virgin_birth_prophecy: { r: 200, g: 150, b: 255 },
+    virgin_birth:   { r: 200, g: 150, b: 255 },
+    child_prophecy:  { r: 200, g: 150, b: 255 },
+    coming_prophet:  { r: 200, g: 150, b: 255 },
+  };
+
+  const defaultThemeColor = { r: 78, g: 205, b: 196 };
+
+  DATA.quranRefs.forEach(ref => {
+    const bx = bibleX(ref.biblePos);
+    const qx = quranX(ref.quranPos);
+
+    const color = themeColors[ref.theme] || defaultThemeColor;
+    const alpha = ref.strength >= 3 ? 0.6 : 0.35;
+
+    // Bezier curve connecting Bible to Quran
+    const cp1x = bx;
+    const cp1y = midY - 20;
+    const cp2x = qx;
+    const cp2y = midY + 20;
+
+    ctx.beginPath();
+    ctx.moveTo(bx, bibleY);
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, qx, quranY);
+    ctx.strokeStyle = colorStr(color, alpha);
+    ctx.lineWidth = ref.strength >= 3 ? 1.5 : 0.8;
+    ctx.stroke();
+
+    // Dots at endpoints
+    ctx.beginPath();
+    ctx.arc(bx, bibleY, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = colorStr(color, 0.8);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(qx, quranY, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = colorStr(color, 0.8);
+    ctx.fill();
+  });
+
+  // ── Theme legend for bridge view ──
+  const themeGroups = [
+    { label: 'Creation', color: { r: 100, g: 200, b: 100 } },
+    { label: 'Noah/Flood', color: { r: 80, g: 150, b: 255 } },
+    { label: 'Abraham', color: { r: 255, g: 200, b: 80 } },
+    { label: 'Joseph', color: { r: 255, g: 160, b: 80 } },
+    { label: 'Moses', color: { r: 220, g: 100, b: 180 } },
+    { label: 'Mary/Jesus', color: { r: 200, g: 150, b: 255 } },
+    { label: 'Cain & Abel', color: { r: 200, g: 100, b: 100 } },
+    { label: 'Other', color: defaultThemeColor },
+  ];
+
+  const legendY = midY;
+  const legendX = W - MARGIN.right - 100;
+
+  ctx.fillStyle = 'rgba(20,20,40,0.85)';
+  ctx.fillRect(legendX - 10, legendY - themeGroups.length * 16 / 2 - 12, 120, themeGroups.length * 16 + 20);
+
+  ctx.font = '9px system-ui';
+  ctx.fillStyle = '#999';
+  ctx.textAlign = 'left';
+  ctx.fillText('THEMES', legendX, legendY - themeGroups.length * 16 / 2 - 2);
+
+  themeGroups.forEach((tg, i) => {
+    const y = legendY - themeGroups.length * 16 / 2 + 14 + i * 16;
+    ctx.fillStyle = colorStr(tg.color, 0.8);
+    ctx.fillRect(legendX, y - 5, 12, 3);
+    ctx.fillStyle = '#bbb';
+    ctx.font = '10px system-ui';
+    ctx.fillText(tg.label, legendX + 18, y);
+  });
+}
+
+
+// ── View controls ──
+function setView(view) {
+  currentView = view;
+
+  // Update button states
+  document.querySelectorAll('.controls button').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  document.getElementById('btn-' + view).classList.add('active');
+
+  drawBibleViz();
+}
+
+
+// ── Tooltip on hover ──
+function setupTooltip() {
+  const canvas = document.getElementById('quranCanvas');
+  const tooltip = document.getElementById('tooltip');
+  const rect = canvas.getBoundingClientRect();
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (!DATA) return;
+
+    const x = e.clientX;
+    const y = e.clientY;
+
+    const W = canvas.clientWidth;
+    const H = canvas.clientHeight;
+    const MARGIN = { left: 40, right: 40, top: 60, bottom: 60 };
+    const plotW = W - MARGIN.left - MARGIN.right;
+    const bibleY = MARGIN.top + 30;
+    const quranY = H - MARGIN.bottom - 30;
+
+    const canvasRect = canvas.getBoundingClientRect();
+    const localX = e.clientX - canvasRect.left;
+    const localY = e.clientY - canvasRect.top;
+
+    // Check if near any connection endpoint
+    let found = null;
+    const threshold = 8;
+
+    for (const ref of DATA.quranRefs) {
+      const bx = MARGIN.left + (ref.biblePos / DATA.totalBibleVerses) * plotW;
+      const qx = MARGIN.left + (ref.quranPos / DATA.totalQuranVerses) * plotW;
+
+      // Check Bible endpoint
+      if (Math.abs(localX - bx) < threshold && Math.abs(localY - bibleY) < threshold * 2) {
+        found = ref;
+        break;
+      }
+      // Check Quran endpoint
+      if (Math.abs(localX - qx) < threshold && Math.abs(localY - quranY) < threshold * 2) {
+        found = ref;
+        break;
+      }
+    }
+
+    if (found) {
+      const book = DATA.books[found.bibleBook];
+      const surah = DATA.surahs.find(s => s.num === found.quranSurah);
+      const theme = found.theme.replace(/_/g, ' ');
+
+      tooltip.innerHTML = `
+        <strong>${theme.charAt(0).toUpperCase() + theme.slice(1)}</strong><br>
+        Bible: ${book ? book.name : '?'}<br>
+        Quran: Surah ${found.quranSurah} (${surah ? surah.name : '?'})<br>
+        Strength: ${'*'.repeat(found.strength)}
+      `;
+      tooltip.style.display = 'block';
+      tooltip.style.left = (e.clientX + 15) + 'px';
+      tooltip.style.top = (e.clientY - 10) + 'px';
+    } else {
+      tooltip.style.display = 'none';
+    }
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    tooltip.style.display = 'none';
+  });
+}
+
+
+// ── Handle resize ──
+window.addEventListener('resize', () => {
+  if (DATA) {
+    drawBibleViz();
+    drawQuranViz();
+  }
+});
+
+// ── Init ──
+loadData().then(() => {
+  setupTooltip();
+});
+</script>
+</body>
+</html>
