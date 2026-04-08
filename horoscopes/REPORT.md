@@ -201,6 +201,43 @@ Real personality datasets typically show η² ~ 0.001–0.010 for most demograph
 
 ---
 
+## 6b. OkCupid Pilot Results (N=46,676)
+
+First run on real data. Source: [JSE OkCupid dataset](https://github.com/r-spark/okcupid) — 59,946 San Francisco dating profiles from 2012. After filtering for stated zodiac sign and sufficient essay length: **46,676 profiles**.
+
+**Data pipeline:** self-reported zodiac sign → zodiac_idx; all 10 essay fields concatenated → NRC Emotion Lexicon + validated lexical proxies → z-scored Big Five (E, A, C, N, O). DOY sampled uniformly within each sign's date range.
+
+**Important caveats on this dataset:**
+- Big Five derived from NLP on short dating essays — noisier than questionnaire scores
+- Zodiac sign is self-reported (not computed from birth date) — tests cultural self-attribution pathway specifically
+- Phases 4/5 boundary convergence are semi-circular by construction (DOY sampled from sign ranges), so interpret with caution
+- Phases 1 and 2 are fully valid
+
+### Results
+
+| Phase | Metric | Result | Verdict |
+|-------|--------|--------|---------|
+| 1 | Accuracy (LR) | 8.83% (1.06× chance), η²=0.00030 | **NULL** |
+| 1 | p_permutation | 0.48 | NULL |
+| 2 | ARI p-value | 0.93 | **NULL** |
+| 2 | Inertia ratio | 4.18 (zodiac 4× worse than k-means) | NULL |
+| 3 | p vs. random | 1.00 | NULL |
+| 4 | Smoothness | p=0.000 (trajectory IS smooth) | ✓ Smooth |
+| 4 | k=4 convergence | MAD=12.3d, p=0.014 | **MARGINAL** |
+| 4 | k=12 convergence | MAD=27.3d, p=0.368 | NULL |
+| 4 | k=36 convergence | MAD=9.0d, p=0.032 | **MARGINAL** |
+| 5 | MAD | 9.5 days, p=0.658 | NULL |
+
+### Interpretation
+
+Phases 1 and 2 are cleanly null — self-reported zodiac sign does not predict NLP-inferred Big Five from dating essays. This is the expected result given the noisy measurement chain (short essays → lexical scoring → sign prediction).
+
+The Phase 4 marginal results at k=4 (elements) and k=36 (decans) but not k=12 (signs) are interesting but most likely artefacts of the DOY sampling method — the personality trajectory is trivially smooth because each sign maps to a uniform DOY window, and any coarse partition will approximate that structure. Do not over-interpret.
+
+**The null result from OkCupid is not a test of the main hypothesis.** It tests: "does self-reported sign predict NLP-derived personality in a dating context?" The real test is: "does birth date → computed sign predict questionnaire Big Five?" This requires SOEP/UKHLS data.
+
+---
+
 ## 7. Next Steps
 
 ### Immediate (no data needed)

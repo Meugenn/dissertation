@@ -126,6 +126,24 @@ def run_phase3(
 
     random_accs = np.array(random_accs)
     zodiac_acc = named_accs["zodiac"]
+
+    if len(random_accs) == 0:
+        if verbose:
+            print("\n→ WARNING: All random partitions produced degenerate classes (insufficient per-class N).")
+            print("   This happens when DOY values are discrete (e.g. sign midpoints).")
+            print("   Phase 3 is not interpretable for this dataset.")
+        return {
+            "n": n,
+            "named_accuracies": named_accs,
+            "random_acc_mean": float("nan"),
+            "random_acc_std": float("nan"),
+            "random_acc_p5": float("nan"),
+            "random_acc_p95": float("nan"),
+            "p_zodiac_vs_random": float("nan"),
+            "zodiac_percentile": float("nan"),
+            "warning": "degenerate_partitions",
+        }
+
     p_zodiac = float(np.mean(random_accs >= zodiac_acc))
 
     if verbose:
