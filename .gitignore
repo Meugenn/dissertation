@@ -9,15 +9,33 @@ dist/
 *.pdf
 .DS_Store
 pytest-cache-files-*
+
+# LaTeX build artifacts (global)
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+
+# Dissertation-specific build dirs
 dissertation/overleaf/%OUTDIR%/
 dissertation/overleaf/build/
-dissertation/overleaf/*.aux
-dissertation/overleaf/*.log
-dissertation/overleaf/*.out
-dissertation/overleaf/*.toc
-dissertation/overleaf/*.bbl
-dissertation/overleaf/*.blg
 dissertation/latex/build/
 dissertation/latex/%OUTDIR%/
+
+# Polymarket
 polymarket/pipeline/.env
 polymarket/dashboard/.env.local
+
+# Horoscopes — raw data files (too large for git)
+horoscopes/data/okcupid_profiles.zip
+horoscopes/data/profiles.csv
+horoscopes/data/okcupid_big5.csv
+
+# Neurodivergence — cached GWAS parquet files
+neurodivergence/data_cache/
+
+archive/
+.idea/
+.pytest_cache/

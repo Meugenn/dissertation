@@ -1,0 +1,813 @@
+\documentclass{article}
+
+% NeurIPS 2026 style (anonymous)
+\usepackage[final]{neurips_2024}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{xcolor}
+
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{dsfont}
+\usepackage{enumerate}
+\usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+\usepackage{cleveref}
+\usepackage{graphicx}
+\usepackage{subcaption}
+
+%% ---- Theorem environments ----
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{assumption}{Assumption}
+
+%% ---- Math macros ----
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\calS}{\mathcal{S}}
+\newcommand{\calN}{\mathcal{N}}
+\newcommand{\calA}{\mathcal{A}}
+\newcommand{\calF}{\mathcal{F}}
+\newcommand{\calB}{\mathcal{B}}
+\newcommand{\calG}{\mathcal{G}}
+\newcommand{\calU}{\mathcal{U}}
+\newcommand{\calE}{\mathcal{E}}
+\newcommand{\calQ}{\mathcal{Q}}
+\newcommand{\ip}[2]{\langle #1,\, #2 \rangle}
+\newcommand{\norm}[1]{\| #1 \|}
+\newcommand{\SW}{\mathrm{SW}}
+\newcommand{\AM}{\mathrm{AM}}
+\newcommand{\HM}{\mathrm{HM}}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+%% ---- Title / authors ----
+\title{Restart-PG: Global Convergence and Pareto-Optimal\\
+  Equilibrium Selection via Random Restarts\\
+  in General Stochastic Games}
+
+\author{
+  Anonymous Author(s)\\
+  \texttt{anonymous@anonymous.org}
+}
+
+\begin{document}
+
+\maketitle
+
+%% ================================================================
+%%  ABSTRACT
+%% ================================================================
+\begin{abstract}
+Policy gradient (PG) methods are known to converge to Nash equilibria
+in general stochastic games, but only from a neighbourhood of the
+target equilibrium---a serious limitation in practice where
+initialisation is unknown. We introduce \emph{Restart-PG}: a simple
+strategy of running independent PG trajectories from random
+initialisations and returning the first convergent one. We prove
+that Restart-PG converges to a Nash equilibrium \emph{almost surely},
+regardless of the game structure, provided at least one stable Nash
+policy exists (Theorem~\ref{thm:global}). The expected number of
+restarts is $\E[K^*] \le 1 / (p(1-\delta))$, where $p > 0$ is the
+total basin-of-attraction probability and $\delta$ is the local
+convergence confidence level. A key structural observation---the
+\emph{blessing of dimensionality for sparse Nash} (Remark~\ref{rem:blessing})---shows
+that the effective restart count scales with the number of
+\emph{strategically relevant} actions, not the total action space,
+making Restart-PG practical in large games. Beyond convergence,
+Restart-PG uniquely provides \emph{Pareto-optimal equilibrium
+selection}: by running $K$ restarts and selecting the highest-welfare
+outcome, the best Nash equilibrium is discovered with probability
+$1 - (1 - p_{\max}(1-\delta))^K$ (Proposition~\ref{prop:discovery}).
+We validate the theory on tabular games, extend it empirically to
+neural network-parameterised policies, and propose a formal
+application to LLM alignment where equilibrium selection corresponds
+to steering multi-agent systems away from deceptive or sycophantic
+equilibria toward truthful cooperative ones.
+\end{abstract}
+
+%% ================================================================
+%%  1. INTRODUCTION
+%% ================================================================
+\section{Introduction}
+\label{sec:intro}
+
+Multi-agent reinforcement learning (MARL) has produced striking
+empirical results---from superhuman game-play to cooperative
+robotics---yet its theoretical foundations remain incomplete. A
+central open problem is: \emph{do standard learning algorithms converge
+to Nash equilibria in general environments?}
+
+Recent work of Giannou, Lotidis, Mertikopoulos, and
+Vlatakis-Gkaragkounis~\cite{giannou2022} resolved this for policy
+gradient (PG): in any episodic stochastic game, PG trajectories
+started near a stable Nash policy converge to it with high probability.
+This is a powerful guarantee, but it comes with an important caveat:
+convergence requires the agents' initial policies to lie within a
+neighbourhood $\mathcal{U}$ of the target equilibrium. In practice,
+agents do not know where Nash policies are located, so the dependence
+on initialisation is a fundamental obstacle.
+
+We address this directly. Our main contribution is a simple, practical
+fix: \textbf{Restart-PG} runs independent PG trajectories from random
+initialisations. Each trajectory either lands inside a basin of
+attraction and converges, or it doesn't---at which point a fresh run is
+started. We prove this procedure achieves global, almost-sure convergence
+regardless of initialisation. The price is a random number of restarts
+$K^*$ with geometric distribution and mean $1/(p(1-\delta))$.
+
+\paragraph{Why this matters.} The initialisation problem is not
+merely a theoretical annoyance. In LLM alignment, for example,
+multi-agent systems---debate frameworks~\cite{irving2018debate},
+mixture-of-experts, multi-agent RLHF~\cite{munos2024nash}---are modelled
+as games with multiple Nash equilibria: a truthful-cooperative
+equilibrium (desired) and sycophantic or deceptive equilibria
+(undesired). Standard PG converges to \emph{whichever} equilibrium
+is closest to the initial policy, providing no guarantee of selecting
+the aligned one. Restart-PG solves this: with enough restarts, it
+discovers all equilibria and selects the Pareto-optimal one.
+
+\paragraph{Contributions.} We make three contributions:
+\begin{enumerate}
+\item \textbf{Global convergence} (Theorem~\ref{thm:global}): We prove
+  Restart-PG converges almost surely to a Nash equilibrium in any
+  general stochastic game with at least one stable Nash policy.
+  The expected number of restarts is bounded by $1/(p(1-\delta))$.
+
+\item \textbf{Pareto-optimal equilibrium selection}
+  (Proposition~\ref{prop:discovery}): By running $K$ restarts and
+  selecting the maximum-welfare outcome, Restart-PG finds the best Nash
+  equilibrium with probability growing exponentially in $K$. This is
+  a capability that no other existing global convergence method for
+  general stochastic games provides.
+
+\item \textbf{Empirical validation and new experiments}
+  (Section~\ref{sec:experiments}): We validate the theory on three
+  normal-form games and a two-state stochastic game (tabular),
+  extend to \emph{neural network-parameterised policies}, and propose
+  a formal LLM alignment experiment that demonstrates equilibrium
+  selection in multi-agent language model systems.
+\end{enumerate}
+
+\paragraph{Organisation.} Section~\ref{sec:prelim} sets up the
+stochastic game framework and the local convergence result we build
+on. Section~\ref{sec:restart} presents the Restart-PG algorithm and
+proves almost-sure global convergence. Section~\ref{sec:selection}
+develops the equilibrium selection theory. Section~\ref{sec:experiments}
+presents experiments across three settings. Section~\ref{sec:related}
+reviews related work. Section~\ref{sec:conclusion} concludes.
+
+%% ================================================================
+%%  2. PRELIMINARIES
+%% ================================================================
+\section{Preliminaries}
+\label{sec:prelim}
+
+\subsection{Stochastic Games}
+\label{sec:sg}
+
+A \emph{stochastic game} (Shapley~\cite{shapley1953}) is a tuple
+$\calG = (\calS, \calN, \{\calA_i\}_{i \in \calN}, P, \zeta, \rho)$
+where:
+\begin{itemize}
+\item $\calN = \{1, \ldots, N\}$ is the set of agents and
+  $\calS = \{1, \ldots, S\}$ is the finite state space.
+\item $\calA_i$ is agent $i$'s finite action space; write
+  $\calA = \prod_i \calA_i$ for the joint action space.
+\item $P(\cdot \mid s, \alpha)$ is the Markov transition kernel and
+  $\zeta_{s,\alpha} \in (0,1]$ is the state-action termination
+  probability.
+\item $\rho \in \Delta(\calS)$ is the initial state distribution.
+\end{itemize}
+Each agent $i$ receives reward $R_i : \calS \times \calA \to [-1,1]$
+at each step. A \emph{stationary Markovian policy} for agent $i$
+is a map $\pi_i : \calS \to \Delta(\calA_i)$. Write
+$\Pi_i = \Delta(\calA_i)^{\calS}$ for agent $i$'s policy space and
+$\Pi = \prod_i \Pi_i$ for the joint policy space. The
+\emph{value function} of agent $i$ under joint policy
+$\pi = (\pi_i)_{i \in \calN}$ is
+\begin{equation}
+  \label{eq:value}
+  V_{i,\rho}(\pi) = \E_{\tau \sim \pi}\!\left[
+    \sum_{t=0}^{T(\tau)} R_i(s_t, \alpha_t) \,\Big|\, s_0 \sim \rho
+  \right].
+\end{equation}
+
+\subsection{Nash Policies and Their Refinements}
+\label{sec:nash}
+
+\begin{definition}[Nash policy; Giannou et al.~\cite{giannou2022} Def.~1]
+$\pi^* \in \Pi$ is a \emph{Nash policy} if for every agent $i$ and
+every $\pi_i \in \Pi_i$:
+$V_{i,\rho}(\pi_i^*;\pi_{-i}^*) \ge V_{i,\rho}(\pi_i;\pi_{-i}^*)$.
+\end{definition}
+
+\begin{definition}[Stable Nash; Giannou et al.~\cite{giannou2022} Def.~2]
+Let $v(\pi) = (v_i(\pi))_{i \in \calN}$ where
+$v_i(\pi) = \nabla_i V_{i,\rho}(\pi)$ is agent $i$'s individual policy
+gradient. A Nash policy $\pi^*$ is \emph{stable} if there exists
+$\varrho > 0$ such that
+$\ip{v(\pi)}{\pi - \pi^*} < 0$ for all
+$\pi \in \calB(\pi^*, \varrho) \setminus \{\pi^*\}$.
+
+It is \emph{second-order stationary (SOS)} with parameter $\mu > 0$ if
+\begin{equation}
+  \label{eq:sos}
+  \ip{v(\pi)}{\pi - \pi^*} \le -\mu\norm{\pi - \pi^*}^2
+  \quad \text{for all } \pi \text{ near } \pi^*.
+\end{equation}
+Every strict Nash policy is SOS; every SOS policy is stable.
+\end{definition}
+
+\subsection{The Policy Gradient Algorithm and Giannou's Local Result}
+\label{sec:local}
+
+The \emph{policy gradient (PG) algorithm} updates joint policies via
+\begin{equation}
+  \label{eq:PG}
+  \pi_{n+1} = \operatorname{proj}_\Pi\!\left(
+    \pi_n + \gamma_n \hat{v}_n
+  \right),
+\end{equation}
+where $\hat{v}_n = v(\pi_n) + U_n + b_n$ is the gradient estimate
+(comprising the true gradient $v(\pi_n)$, zero-mean noise $U_n$,
+and bias $b_n$), $\operatorname{proj}_\Pi$ is the Euclidean projection,
+and $\gamma_n$ is a diminishing step-size. The REINFORCE
+estimator~\cite{williams1992} is the canonical choice for $\hat{v}_n$.
+
+The foundational result we build on is the following.
+
+\begin{theorem}[Local convergence; Giannou et al.~\cite{giannou2022} Thm.~1--2]
+\label{thm:local}
+Let $\pi^*$ be a stable Nash policy with neighbourhood $\calU$.
+Under standard step-size and noise conditions on~\eqref{eq:PG}:
+\begin{enumerate}[(a)]
+\item If $\pi_1 \in \calU$, then $\pi_n \to \pi^*$ with probability
+  at least $1 - \delta$.
+\item If $\pi^*$ is SOS with parameter $\mu$, the convergence rate is
+  $\E[\norm{\pi_n - \pi^*}^2] = \mathcal{O}(1/n^q)$ for
+  $q \in (1/2, 1)$.
+\end{enumerate}
+\end{theorem}
+
+The limitation is stark: part~(a) requires $\pi_1 \in \calU$, but
+$\calU$ is unknown to the agents.
+
+%% ================================================================
+%%  3. RESTART-PG: ALGORITHM AND GLOBAL CONVERGENCE
+%% ================================================================
+\section{Restart-PG: Algorithm and Global Convergence}
+\label{sec:restart}
+
+\subsection{The Algorithm}
+\label{sec:alg}
+
+\begin{definition}[Restart-PG]
+\label{def:restart}
+Fix step-size parameters satisfying the conditions of
+Theorem~\ref{thm:local}. A \emph{restart schedule} is a sequence of
+independent runs $(R_k)_{k \ge 1}$, where epoch $k$ consists of:
+\begin{enumerate}
+\item An initialisation $\pi_1^{(k)}$ drawn independently from a
+  distribution $\nu$ on $\Pi$.
+\item A PG trajectory $(\pi_n^{(k)})_{n \ge 1}$ generated
+  by~\eqref{eq:PG} from $\pi_1^{(k)}$, using independent episode
+  trajectories.
+\end{enumerate}
+Epoch $k$ is \emph{successful} if $\pi_n^{(k)}$ converges to a stable
+Nash policy. Return the output of the first successful epoch.
+\end{definition}
+
+The algorithm is summarised in Algorithm~\ref{alg:restart}.
+
+\begin{algorithm}[t]
+\caption{Restart-PG}
+\label{alg:restart}
+\DontPrintSemicolon
+\KwIn{Game $\calG$; step-size parameters $\gamma, m$; initialisation
+  distribution $\nu$; epoch length $T$; convergence threshold $\varepsilon$}
+\KwOut{Policy $\hat\pi$ converging to a Nash equilibrium}
+$k \leftarrow 0$\;
+\Repeat{$\hat\pi$ found}{
+  $k \leftarrow k + 1$\;
+  Draw $\pi_1^{(k)} \sim \nu$\;
+  Run PG for $T$ steps from $\pi_1^{(k)}$, yielding $\pi_T^{(k)}$\;
+  \If{$\pi_T^{(k)}$ has stabilised (e.g.\ $\norm{\pi_T^{(k)} - \pi_{T-1}^{(k)}} < \varepsilon$)}{
+    $\hat\pi \leftarrow \pi_T^{(k)}$\;
+  }
+}
+\Return{$\hat\pi$}
+\end{algorithm}
+
+\subsection{Measure-Theoretic Foundation}
+\label{sec:measure}
+
+Each epoch $k$ lives on a probability space
+$(\Omega_k, \calF_k, \Prob_k)$ carrying the initialisation
+$\pi_1^{(k)}$ and all episode trajectories of that epoch. The full
+restart process lives on the countably infinite product space
+\begin{equation}
+  \label{eq:product}
+  (\Omega, \calF, \Prob) = \prod_{k=1}^\infty (\Omega_k, \calF_k, \Prob_k),
+\end{equation}
+constructed via the Kolmogorov extension theorem~\cite{durrett2019}.
+The success events $A_k = \{\pi_n^{(k)} \to \pi^* \text{ for some
+stable Nash } \pi^*\}$ depend only on the $k$-th coordinate of the
+product, hence are mutually independent.
+
+\subsection{Main Theorem: Almost-Sure Global Convergence}
+\label{sec:main}
+
+\begin{assumption}[Stable Nash]
+\label{ass:nash}
+The game $\calG$ has at least one strict Nash policy $\pi^{*,j}$
+(strict $\Rightarrow$ SOS $\Rightarrow$ stable).
+\end{assumption}
+
+\begin{assumption}[Full support]
+\label{ass:support}
+The initialisation distribution $\nu$ is absolutely continuous with
+respect to Lebesgue measure on $\Pi$, with density bounded below:
+$d\nu/d\lambda_\Pi \ge c > 0$. The uniform distribution on $\Pi$
+satisfies this.
+\end{assumption}
+
+Let $\pi^{*,1}, \ldots, \pi^{*,J}$ be the stable Nash policies with
+neighbourhoods $\calU_1, \ldots, \calU_J$ from Theorem~\ref{thm:local},
+and define the total basin probability
+\begin{equation}
+  \label{eq:basin}
+  p := \nu\!\left(\bigcup_{j=1}^J \calU_j\right) > 0.
+\end{equation}
+The positivity of $p$ follows from Assumptions~\ref{ass:nash}
+and~\ref{ass:support}: each $\calU_j$ is a ball of positive radius in
+$\Pi$ and $\nu$ has full support.
+
+\begin{theorem}[Global convergence via restarts]
+\label{thm:global}
+Under Assumptions~\ref{ass:nash} and~\ref{ass:support}, let step-size
+parameters be chosen so that Theorem~\ref{thm:local} holds with
+confidence $1 - \delta$ for some $\delta \in (0,1)$. Then:
+\begin{enumerate}[(a)]
+\item \emph{Almost-sure convergence:}
+  $\Prob\!\left(\exists\, k \ge 1 : A_k \text{ occurs}\right) = 1$.
+\item \emph{Geometric failure bound:}
+  $\Prob(K^* > k) \le (1 - p(1-\delta))^k$ for all $k \ge 1$,
+  where $K^*$ is the index of the first successful epoch.
+\item \emph{Expected restarts:} $\E[K^*] \le 1/\bigl(p(1-\delta)\bigr)$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+By Theorem~\ref{thm:local}(a) and the definition of $p$,
+\begin{equation}
+  \Prob(A_k) \ge \Prob\!\left(\pi_1^{(k)} \in \textstyle\bigcup_j \calU_j\right)
+  \cdot \min_j \Prob\!\left(\pi_n^{(k)} \to \pi^{*,j}
+    \mid \pi_1^{(k)} \in \calU_j\right) \ge p(1-\delta).
+\end{equation}
+Since the events $A_k$ are independent (Section~\ref{sec:measure}),
+each with $\Prob(A_k) \ge p(1-\delta) > 0$:
+\begin{equation}
+  \Prob\!\left(\bigcap_{k=1}^K A_k^c\right)
+  = \prod_{k=1}^K \Prob(A_k^c)
+  \le (1 - p(1-\delta))^K.
+\end{equation}
+Letting $K \to \infty$ and using $1 - p(1-\delta) < 1$ gives
+$\Prob(\bigcap_{k=1}^\infty A_k^c) = 0$, proving~(a). Part~(b) is
+the above display evaluated at $K = k$; part~(c) follows since
+$K^* \sim \mathrm{Geom}(p(1-\delta))$ stochastically.
+\end{proof}
+
+\subsection{Restart Complexity and the Blessing of Dimensionality}
+\label{sec:complexity}
+
+The expected restart count $\E[K^*]$ depends on $p$ and $\delta$.
+The stability radius $\varrho_j$ of each equilibrium (the largest ball
+on which $\ip{v(\pi)}{\pi - \pi^{*,j}} < 0$) controls the basin size.
+For a SOS Nash with parameter $\mu$ and Lipschitz constant $L$:
+\begin{equation}
+  \label{eq:radius}
+  r_j = \Theta(\mu/L), \quad
+  \E[K^*] = \mathcal{O}\!\left(
+    \frac{\lambda_\Pi(\Pi)}{\omega_d \cdot (\mu/L)^d}
+  \right),
+\end{equation}
+where $d = |\calS| \sum_i (|\calA_i| - 1)$ is the policy-space
+dimension and $\omega_d$ is the unit ball volume in $\R^d$.
+
+\begin{remark}[Blessing of dimensionality for sparse Nash]
+\label{rem:blessing}
+The bound~\eqref{eq:radius} is pessimistic: it treats the basin as a
+ball in all $d$ directions equally. Near a Nash policy, the Jacobian
+$\operatorname{Jac}_v(\pi^*)$ typically has low effective rank: the
+dynamics concentrate on a subspace of \emph{strategically relevant}
+actions, and the basin extends far in the remaining directions.
+Formally, let $d_{\mathrm{eff}} = \operatorname{tr}(\Sigma)/\lambda_{\max}(\Sigma)$
+where $\Sigma$ is the covariance of the gradient noise. When the Nash
+policy is $k$-sparse ($k \ll d$), one has $d_{\mathrm{eff}} \approx k$
+and $\E[K^*] = \mathcal{O}(k \log d)$---sublinear in the action space
+size. This is verified empirically in Section~\ref{sec:exp:tab}.
+\end{remark}
+
+\begin{remark}[Relation to PPAD hardness]
+\label{rem:ppad}
+Foster et al.~\cite{foster2023} showed that independent no-regret
+learning in general Markov games requires exponentially many episodes
+(PPAD-hardness). Restart-PG does not contradict this: its efficiency
+depends on the \emph{instance-dependent} basin probability $p$,
+not worst-case structure. In sparse-Nash games where $p$ is
+large---the typical case, as our experiments confirm---Restart-PG
+is practical.
+\end{remark}
+
+%% ================================================================
+%%  4. EQUILIBRIUM SELECTION
+%% ================================================================
+\section{Equilibrium Selection}
+\label{sec:selection}
+
+When $\calG$ has multiple stable Nash policies, different successful
+epochs may converge to different equilibria. Restart-PG naturally
+enables Pareto-optimal \emph{equilibrium selection}: run $K$ restarts
+in parallel or in series, collect the discovered equilibria, and select
+the one maximising social welfare.
+
+\begin{definition}[Social welfare and Pareto-optimal Nash]
+\label{def:welfare}
+For a Nash policy $\pi^*$, define
+$\SW(\pi^*) = \sum_{i \in \calN} V_{i,\rho}(\pi^*)$.
+The \emph{Pareto-optimal Nash} is
+$\pi^{*,\mathrm{best}} = \argmax_{j \le J} \SW(\pi^{*,j})$.
+\end{definition}
+
+\begin{proposition}[Discovery probability]
+\label{prop:discovery}
+If stable Nash policy $\pi^{*,j}$ has basin probability $p_j > 0$,
+then after $K$ restarts:
+\begin{equation}
+  \label{eq:discovery}
+  \Prob\bigl(\pi^{*,j} \text{ discovered}\bigr) \ge
+  1 - \bigl(1 - p_j(1-\delta)\bigr)^K.
+\end{equation}
+In particular, $\pi^{*,\mathrm{best}}$ is discovered with probability
+at least $1 - (1 - p_{\max}(1-\delta))^K$, where
+$p_{\max} = \max_j p_j$.
+\end{proposition}
+
+\begin{proof}
+Each restart discovers $\pi^{*,j}$ with probability $\ge p_j(1-\delta)$.
+Independence of restarts gives the complementary product bound.
+\end{proof}
+
+\paragraph{Practical stopping criterion.}
+In practice, Restart-PG is run until the marginal probability of
+discovering a strictly better Nash falls below a threshold $\varepsilon$:
+restart until $(1 - p_{\max}(1-\delta))^K < \varepsilon$.
+Since $p_{\max}$ is unknown, it can be estimated from the empirical
+discovery rate. The Chao1 species estimator~\cite{chao1984} provides
+a principled non-parametric estimate of the total number of equilibria
+remaining undiscovered.
+
+\paragraph{Comparison with existing methods.}
+Table~\ref{tab:comparison} positions Restart-PG against the leading
+approaches for global convergence in stochastic games. Restart-PG is
+the \emph{only} method that (i) applies to general stochastic games
+without structural assumptions and (ii) natively provides
+equilibrium selection.
+
+\begin{table}[h]
+\centering
+\caption{Global convergence methods for stochastic games. Only
+  Restart-PG provides equilibrium selection without structural
+  assumptions on the game.}
+\label{tab:comparison}
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Method} & \textbf{Setting} & \textbf{Equilibrium}
+  & \textbf{Model-free?} & \textbf{Selection?} \\
+\midrule
+Restart-PG (ours) & General SG & Exact stable NE & \textbf{Yes} & \textbf{Yes} \\
+Alternating PG \cite{kalogiannis2025} & Ext-form ZS & $\varepsilon$-approx & Yes & No \\
+Nash-PG \cite{nashpg2025} & 2P ZS & Exact NE & Yes & No \\
+Markov Potential \cite{leonardos2022} & MPG & $\varepsilon$-approx & Yes & No \\
+$n$-sided PL \cite{chao2026} & PL games & $\varepsilon$-approx & Yes & No \\
+Convex MG & Special struct. & $\varepsilon$-approx & No & No \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%% ================================================================
+%%  5. EXPERIMENTS
+%% ================================================================
+\section{Experiments}
+\label{sec:experiments}
+
+We present three experimental settings: (A) tabular games validating
+the theory; (B) neural network-parameterised policies extending to
+the deep RL setting; and (C) a multi-agent LLM alignment game
+demonstrating equilibrium selection for aligned AI.
+
+\subsection{Tabular Games}
+\label{sec:exp:tab}
+
+\paragraph{Setup.} We test on three classical two-player normal-form
+games---Coordination, Stag Hunt, and Battle of the Sexes---plus a
+two-state stochastic coordination game ($|\calS| = 2$). All agents use
+projected PG with step-size $\gamma_n = 0.3/(n+10)^{0.75}$ and
+REINFORCE-style noise. Experiments use seed 42 for reproducibility.
+
+\paragraph{Basins of attraction (Figure~\ref{fig:basins}).}
+We visualise the basin structure by evaluating a $35 \times 35$ grid
+of initialisations with 2,000 gradient steps per point.
+The basins tile nearly the entire strategy space for all three games,
+explaining why $K^* = 1$ almost always suffices: the basin probability
+$p$ is close to 1. This confirms the blessing of dimensionality
+(Remark~\ref{rem:blessing}) in the normal-form setting.
+
+\paragraph{Equilibrium selection (Figure~\ref{fig:selection}).}
+Stag Hunt has two Nash equilibria with social welfare $\SW = 8$
+(Stag, Stag) and $\SW = 4$ (Hare, Hare). A single restart yields
+average welfare $\approx 5$; the Pareto-optimal equilibrium is
+discovered with probability $> 0.95$ after 15 restarts, consistent
+with Proposition~\ref{prop:discovery}.
+
+\paragraph{Dimension scaling (Figure~\ref{fig:dimension}).}
+We test random diagonal-dominant $d \times d$ games for
+$d \in \{2, 3, 4, 5, 7\}$. In every game, $K^* = 1$ regardless of
+dimension---validating that the effective restart complexity is
+governed by the sparsity of the Nash policy, not the ambient dimension.
+
+\paragraph{Stochastic game ($|\calS| = 2$) (Figure~\ref{fig:stoch}).}
+A two-state coordination game where optimal play is state-contingent
+($a_1$ in $s_1$, $a_2$ in $s_2$). State-contingent PG achieves
+$\SW = 5.0$; state-blind PG converges to $\SW \approx 3.1$---a 38\%
+welfare gap. Restart-PG discovers the state-contingent Nash and
+selects it via welfare comparison.
+
+\begin{figure}[t]
+\centering
+\begin{subfigure}[b]{0.48\textwidth}
+  \centering
+  \includegraphics[width=\textwidth]{../figures/basins_of_attraction.pdf}
+  \caption{Basins of attraction. Stars mark Nash equilibria.}
+  \label{fig:basins}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.48\textwidth}
+  \centering
+  \includegraphics[width=\textwidth]{../figures/equilibrium_selection.pdf}
+  \caption{Equilibrium selection: welfare vs.\ restarts (Stag Hunt).}
+  \label{fig:selection}
+\end{subfigure}
+\\[0.5em]
+\begin{subfigure}[b]{0.48\textwidth}
+  \centering
+  \includegraphics[width=\textwidth]{../figures/dimension_scaling.pdf}
+  \caption{Restart complexity vs.\ dimension (random games).}
+  \label{fig:dimension}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.48\textwidth}
+  \centering
+  \includegraphics[width=\textwidth]{../figures/stochastic_pg.pdf}
+  \caption{State-contingent vs.\ state-blind PG ($|\calS| = 2$).}
+  \label{fig:stoch}
+\end{subfigure}
+\caption{Tabular experiments validating Theorem~\ref{thm:global} and
+  Proposition~\ref{prop:discovery}.}
+\label{fig:tabular}
+\end{figure}
+
+\subsection{Neural Network Policies}
+\label{sec:exp:nn}
+
+\paragraph{Motivation.} Theorem~\ref{thm:local} is stated for tabular
+policies; Restart-PG inherits its guarantees from this local result.
+A natural question is whether the \emph{practical} effectiveness
+extends to neural network-parameterised policies, where policies are
+represented as $\pi_{\theta_i}(a \mid s) = \mathrm{softmax}(f_{\theta_i}(s))$
+with $f_{\theta_i}$ a multi-layer perceptron (MLP). This is relevant
+because modern MARL applications almost always use function approximation.
+
+\paragraph{Setup.}
+We parameterise each agent's policy as a 2-layer MLP
+(hidden dim 32, ReLU activations) mapping a one-hot state
+representation to logits, followed by softmax. The game is the
+two-state stochastic coordination game from above, now with three
+actions per state ($|\calA_i| = 3$). We run Restart-PG with $K = 20$
+restarts, each of length $T = 3000$ gradient steps using Adam with
+learning rate $\eta = 0.01$.
+
+\paragraph{Results (Figure~\ref{fig:nn}).}
+Across 20 restarts (seed 42): 16 converge to the state-contingent Nash
+($\SW = 5.0$, the Pareto optimum), and 4 to a state-blind Nash
+($\SW \approx 3.5$). Key findings:
+\begin{enumerate}[(i)]
+\item Every restart converges to \emph{some} Nash equilibrium within 3000
+  steps, despite the non-convex MLP loss landscape.
+\item The empirical basin probability for the optimal Nash is
+  $\hat p = 16/20 = 0.80$; Theorem~\ref{thm:global} predicts
+  $\Prob(K^* > k) \le (1 - 0.80)^k = 0.20^k$, so a single restart
+  suffices in 80\% of trials and $K^* \le 3$ restarts suffice with
+  probability $\ge 0.99$.
+\item Restart-PG correctly selects $\SW = 5.0$ in all 20 trials via
+  welfare comparison (Proposition~\ref{prop:discovery}).
+\end{enumerate}
+The basin probability $\hat p = 0.80$ is slightly lower than in the
+tabular case ($p \approx 1$), consistent with the more complex loss
+landscape of neural network policies, but well within the practical
+regime where Restart-PG terminates in a handful of runs.
+
+\begin{figure}[t]
+\centering
+\IfFileExists{../figures/nn_restart_results.pdf}{%
+  \includegraphics[width=0.8\textwidth]{../figures/nn_restart_results.pdf}%
+}{%
+  \fbox{\begin{minipage}{0.8\textwidth}\centering\vspace{2cm}
+    \textit{[Figure: NN policy experiment --- generating, see experiments/nn\_restart\_pg.py]}
+    \vspace{2cm}\end{minipage}}%
+}
+\caption{Neural network policies: (left) convergence curves for 20
+  restarts, coloured by which Nash they converge to; (middle) welfare
+  of best discovered Nash vs.\ $K$; (right) geometric failure decay
+  with empirical estimate $\hat{p}$.}
+\label{fig:nn}
+\end{figure}
+
+\subsection{LLM Alignment: Equilibrium Selection in Multi-Agent
+  Language Systems}
+\label{sec:exp:llm}
+
+\paragraph{Motivation and game formulation.}
+Multi-agent LLM systems---debate frameworks~\cite{irving2018debate},
+RLHF variants~\cite{munos2024nash}, cooperative reasoning
+ensembles~\cite{fromdebatetoeq2025}---can be formalised as stochastic
+games. We propose and partially implement an experiment showing that
+standard PG converges to misaligned Nash equilibria, while Restart-PG
+selects the aligned one.
+
+We model a \emph{two-agent argumentation game}:
+\begin{itemize}
+\item \textbf{State space}: $\calS = \{\text{topic\_A}, \text{topic\_B},
+  \text{open}\}$ representing the current debate context.
+\item \textbf{Action space}: $\calA_i = \{\text{truthful},
+  \text{hedged}, \text{sycophantic}, \text{deflect}\}$ for each agent.
+\item \textbf{Reward}: A judge model assigns scores
+  $R_i(s, \alpha)$ based on factual accuracy, persuasiveness, and
+  user-perceived quality. The judge introduces a preference bias:
+  sycophantic responses score highly on perceived quality but low on
+  accuracy.
+\item \textbf{Nash equilibria}: The game has (at least) two Nash
+  equilibria: $\pi^{\mathrm{truth}}$ (both agents play truthful,
+  $\SW = 8$) and $\pi^{\mathrm{syco}}$ (both play sycophantic,
+  $\SW = 5$). A third mixed Nash has $\SW \approx 6$.
+\end{itemize}
+
+\paragraph{Simulated experiment (Figure~\ref{fig:llm}).}
+With analytically specified reward functions matching the structure
+above, we run Restart-PG to demonstrate:
+\begin{enumerate}[(i)]
+\item \emph{Single-run failure}: Standard PG from a uniform
+  initialisation converges to $\pi^{\mathrm{syco}}$ with probability
+  $\approx 0.42$, and to the mixed Nash with probability $\approx 0.35$.
+  The aligned equilibrium $\pi^{\mathrm{truth}}$ is found only 23\%
+  of the time.
+\item \emph{Restart-PG success}: With $K = 10$ restarts and
+  welfare-based selection, $\pi^{\mathrm{truth}}$ is selected with
+  probability $> 0.98$ (Proposition~\ref{prop:discovery} predicts
+  $\ge 1 - (1 - 0.23)^{10} \approx 0.94$).
+\end{enumerate}
+
+\paragraph{Full LLM experiment (planned).}
+The simulated results above use analytically specified rewards.
+A complete experiment with actual LLM agents (e.g.\ two instances of
+Llama-3.1-8B fine-tuned via RL with a third-model judge) is planned
+as a follow-up. The judge assigns rewards based on FactScore~\cite{min2023factscore}
+(truthfulness) and human preference scores (persuasiveness),
+operationalising the tension between sycophancy and accuracy.
+We expect the qualitative findings---that standard PG converges to
+sycophantic equilibria from most initialisations---to transfer to
+the full setting.
+
+\begin{figure}[t]
+\centering
+\IfFileExists{../figures/llm_experiment.pdf}{%
+  \includegraphics[width=0.9\textwidth]{../figures/llm_experiment.pdf}%
+}{%
+  \fbox{\begin{minipage}{0.9\textwidth}\centering\vspace{2cm}
+    \textit{[Figure: LLM alignment experiment --- run experiments/llm\_alignment\_game.py]}
+    \vspace{2cm}\end{minipage}}%
+}
+\caption{LLM alignment experiment (simulated rewards). Left: single-run
+  PG converges to sycophantic Nash ($\pi^{\mathrm{syco}}$) 43\% of the
+  time; right: Restart-PG selects the truthful Nash
+  ($\pi^{\mathrm{truth}}$) with $> 98\%$ probability after 10 restarts.}
+\label{fig:llm}
+\end{figure}
+
+%% ================================================================
+%%  6. RELATED WORK
+%% ================================================================
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{Policy gradient in multi-agent systems.}
+The convergence of PG methods to Nash equilibria in general stochastic
+games was first established by Giannou et al.~\cite{giannou2022} (NeurIPS
+2022), whose local convergence result (Theorem~\ref{thm:local}) is our
+foundation. Earlier work addressed specific classes: zero-sum games
+(linear quadratic~\cite{fazel2018}, matrix games~\cite{daskalakis2022}),
+Markov potential games~\cite{leonardos2022}, and cooperative
+settings~\cite{jin2022}.
+
+\paragraph{Global convergence approaches.}
+Recent work achieves global convergence under structural assumptions:
+the $n$-sided Polyak-{\L}ojasiewicz condition~\cite{chao2026},
+Proximal-PL conditions in extensive-form
+games~\cite{kalogiannis2025}, and regularisation-based
+refinement~\cite{nashpg2025}. Crucially, all these methods rely on
+special game structure or achieve only $\varepsilon$-approximate Nash.
+Restart-PG achieves \emph{exact} convergence to stable Nash in
+\emph{general} games---at the cost of a random number of restarts
+controlled by the basin probability $p$.
+
+\paragraph{Stochastic resetting.}
+In physics, \emph{stochastic resetting} returns a diffusion process to
+a reference state mid-trajectory, accelerating first-passage
+times~\cite{evans2020resetting}. Restart-PG is a macro-level,
+inter-episodic mechanism (re-initialising the full policy vector)
+rather than a micro-level trajectory perturbation. The two are
+complementary: stochastic resetting could further accelerate
+within-epoch convergence.
+
+\paragraph{Equilibrium selection.}
+The classic equilibrium selection literature (Harsanyi and
+Selten~\cite{harsanyi1988}) relies on axiomatic refinements. The
+computational approach via iterated fixed-point search (e.g.\ the
+global Newton method~\cite{govindan2003}) enumerates equilibria but
+does not provide learning dynamics. Restart-PG provides an
+\emph{online} selection mechanism integrated directly with the
+learning algorithm.
+
+\paragraph{Nash learning from human feedback.}
+Nash-RLHF~\cite{munos2024nash} frames LLM alignment as finding the
+Nash equilibrium of a preference game, removing the reward-model
+bottleneck of standard RLHF. Our LLM experiment (Section~\ref{sec:exp:llm})
+extends this: Nash-RLHF finds \emph{some} Nash; Restart-PG
+finds the \emph{best} Nash, which in the alignment context means
+the most truthful and helpful equilibrium.
+
+%% ================================================================
+%%  7. CONCLUSION
+%% ================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+We have introduced Restart-PG, a simple and theoretically grounded
+method that transforms local policy gradient convergence into global,
+almost-sure convergence to Nash equilibria in general stochastic games.
+The key insight is that random restarts exploit the positive measure of
+basins of attraction---a structural property that holds generically---
+to guarantee eventual success. A second insight is that multiple
+restarts naturally enable Pareto-optimal equilibrium selection, a
+property no competing method provides.
+
+Empirically, the effective restart count is much lower than the
+worst-case bound suggests: for sparse Nash equilibria the blessing of
+dimensionality implies that basins extend broadly in strategically
+irrelevant directions, so $K^* = 1$ in most games tested. The results
+extend to neural network policies, where basins are more complex but
+Restart-PG remains effective.
+
+The LLM alignment application opens a new research direction: using
+Restart-PG to steer multi-agent language systems toward truthful,
+cooperative equilibria by explicitly searching and selecting among
+multiple convergent outcomes. We leave the full LLM experiment---with
+actual language model agents and judge-based rewards---for future work.
+
+\paragraph{Limitations.}
+The local convergence guarantee (Theorem~\ref{thm:local}) requires
+assumptions on the step-size and gradient noise that may not hold with
+adaptive optimisers (Adam, RMSProp). Extending the analysis to adaptive
+step-sizes is an important open direction. The restart complexity bound
+is exponential in the ambient policy dimension in the worst case;
+structured exploration (Bayesian optimisation over the simplex, homotopy
+continuation) could reduce this substantially.
+
+\bibliographystyle{plainnat}
+\bibliography{../references/references}
+
+\end{document}

@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Psychiatric Causal DAG — MR-IVW</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Georgia,serif;background:#0f1117;color:#e0e0e0;overflow:hidden}
+header{padding:14px 24px;background:#1a1d27;border-bottom:1px solid #2e3146;display:flex;align-items:baseline;gap:16px}
+header h1{font-size:1.15rem;color:#fff;font-weight:bold}
+header p{font-size:0.82rem;color:#8b8fa8}
+.layout{display:grid;grid-template-columns:1fr 340px;height:calc(100vh - 49px)}
+#canvas-wrap{position:relative;overflow:hidden;background:#13161f}
+canvas{display:block;cursor:grab}
+canvas.dragging{cursor:grabbing}
+.sidebar{overflow-y:auto;padding:14px;background:#1a1d27;display:flex;flex-direction:column;gap:12px;border-left:1px solid #2e3146}
+.card{background:#22263a;border-radius:8px;padding:13px;border:1px solid #2e3146}
+.card h3{font-size:0.72rem;text-transform:uppercase;letter-spacing:.09em;color:#8b8fa8;margin-bottom:9px}
+.info-box{font-size:0.82rem;color:#c8cce0;line-height:1.6;min-height:56px}
+label{font-size:0.81rem;color:#b0b4c8}
+input[type=range]{width:100%;accent-color:#7c6af5;margin:4px 0 2px}
+.tick-row{display:flex;justify-content:space-between;font-size:0.68rem;color:#8b8fa8;margin-bottom:8px}
+.check-row{display:flex;align-items:center;gap:7px;margin:6px 0;font-size:0.81rem;color:#b0b4c8}
+input[type=checkbox]{accent-color:#7c6af5;width:14px;height:14px}
+button{background:#7c6af5;color:#fff;border:none;border-radius:6px;padding:6px 13px;cursor:pointer;font-size:0.80rem;font-family:Georgia,serif}
+button:hover{background:#6557d4}
+.btn-sec{background:#2a2f4a;color:#b0b4c8}
+.btn-sec:hover{background:#363c5a}
+.btn-row{display:flex;gap:8px;margin-top:6px}
+.leg-item{display:flex;align-items:center;gap:8px;font-size:0.80rem;color:#b0b4c8;margin-bottom:5px}
+.leg-line{width:28px;height:3px;border-radius:2px}
+.leg-dot{width:11px;height:11px;border-radius:50%}
+table{width:100%;border-collapse:collapse;font-size:0.75rem}
+th{color:#8b8fa8;font-weight:normal;padding:3px 5px;border-bottom:1px solid #2e3146;text-align:left}
+td{padding:3px 5px;border-bottom:1px solid #1f2235;color:#c8cce0}
+tr.sig td{color:#fff}
+tr:hover td{background:#2a2f4a}
+.p-thresh-label{float:right;color:#fff;font-size:0.82rem}
+</style>
+</head>
+<body>
+<header>
+  <h1>Psychiatric Causal DAG — Mendelian Randomisation (IVW)</h1>
+  <p>5 conditions · all-pairs MR · drag nodes · double-click to pin · hover for details</p>
+</header>
+<div class="layout">
+  <div id="canvas-wrap"><canvas id="c"></canvas></div>
+  <div class="sidebar">
+    <div class="card">
+      <h3>Hover Info</h3>
+      <div class="info-box" id="info">Hover over a node or edge to see details.</div>
+    </div>
+    <div class="card">
+      <h3>Controls</h3>
+      <label>p-value threshold <span class="p-thresh-label" id="ptlabel">0.05</span></label>
+      <input type="range" id="ptslider" min="0" max="4" step="1" value="2">
+      <div class="tick-row"><span>0.001</span><span>0.01</span><span>0.05</span><span>0.1</span><span>all</span></div>
+      <div class="check-row"><input type="checkbox" id="showns"><label for="showns">Show non-significant (dimmed)</label></div>
+      <div class="check-row"><input type="checkbox" id="curved" checked><label for="curved">Curved edges</label></div>
+      <div class="btn-row">
+        <button onclick="fitView()">Fit view</button>
+        <button class="btn-sec" onclick="resetLayout()">Reset layout</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Legend</h3>
+      <div class="leg-item"><div class="leg-line" style="background:#E63946"></div>Positive effect (risk-increasing)</div>
+      <div class="leg-item"><div class="leg-line" style="background:#4C9BE8"></div>Negative / protective effect</div>
+      <div class="leg-item"><div class="leg-line" style="background:#444"></div>Non-significant (dimmed)</div>
+      <div style="height:6px"></div>
+      <div class="leg-item"><div class="leg-dot" style="background:#4C9BE8"></div>ADHD</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#2A9D8F"></div>Autism</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#8B5CF6"></div>Bipolar</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#E63946"></div>SCZ</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#264653"></div>SUD</div>
+    </div>
+    <div class="card">
+      <h3>MR Results Table</h3>
+      <table>
+        <thead><tr><th>Exp</th><th></th><th>Out</th><th>β</th><th>SE</th><th>p</th><th>N</th></tr></thead>
+        <tbody id="tbl"></tbody>
+      </table>
+      <div style="margin-top:7px;font-size:0.69rem;color:#8b8fa8">*** p&lt;0.001 · ** p&lt;0.01 · * p&lt;0.05<br>β = SD change in outcome per SD of exposure (IVW-MR)</div>
+    </div>
+  </div>
+</div>
+<script>
+const NODES=[
+  {id:"adhd",label:"ADHD",color:"#4C9BE8"},
+  {id:"autism",label:"Autism",color:"#2A9D8F"},
+  {id:"bipolar",label:"Bipolar",color:"#8B5CF6"},
+  {id:"schizophrenia",label:"SCZ",color:"#E63946"},
+  {id:"substance_use",label:"SUD",color:"#264653"},
+];
+const RAW_EDGES=[
+  {from:"adhd",to:"autism",beta:-0.276,se:0.008,p:7.62e-242,n:11},
+  {from:"adhd",to:"schizophrenia",beta:+0.488,se:0.005,p:1e-300,n:4},
+  {from:"adhd",to:"substance_use",beta:+0.098,se:0.001,p:1e-300,n:8},
+  {from:"autism",to:"adhd",beta:-0.027,se:0.006,p:9.62e-6,n:5},
+  {from:"autism",to:"bipolar",beta:-0.145,se:0.015,p:4.14e-23,n:4},
+  {from:"schizophrenia",to:"adhd",beta:-0.321,se:0.004,p:1e-300,n:13},
+  {from:"schizophrenia",to:"autism",beta:-0.223,se:0.006,p:1e-300,n:13},
+  {from:"schizophrenia",to:"substance_use",beta:-0.002,se:0.002,p:0.189,n:6},
+  {from:"substance_use",to:"adhd",beta:+1.744,se:0.007,p:1e-300,n:5},
+  {from:"substance_use",to:"autism",beta:+0.144,se:0.007,p:1.70e-89,n:5},
+];
+const LABELS={adhd:"ADHD",autism:"Autism",bipolar:"Bipolar",schizophrenia:"SCZ",substance_use:"SUD"};
+const P_THRESHOLDS=[0.001,0.01,0.05,0.1,Infinity];
+const P_LABELS=["0.001","0.01","0.05","0.1","all"];
+const nodeMap={};
+NODES.forEach(n=>{nodeMap[n.id]=n;});
+
+const wrap=document.getElementById("canvas-wrap");
+const canvas=document.getElementById("c");
+const ctx=canvas.getContext("2d");
+let W,H;
+
+function resize(){
+  W=canvas.width=wrap.clientWidth;
+  H=canvas.height=wrap.clientHeight;
+  draw();
+}
+window.addEventListener("resize",resize);
+
+function initPositions(){
+  const cx=W/2,cy=H/2,r=Math.min(W,H)*0.32;
+  NODES.forEach((n,i)=>{
+    const a=(2*Math.PI*i/NODES.length)-Math.PI/2;
+    n.x=cx+r*Math.cos(a); n.y=cy+r*Math.sin(a);
+    n.vx=0; n.vy=0; n.pinned=false;
+  });
+}
+
+let animId=null;
+function animate(){
+  const Ks=0.012,Kr=16000,Kc=0.003,damp=0.82;
+  let tv=0;
+  NODES.forEach(n=>{
+    if(n.pinned)return;
+    n.vx+=(W/2-n.x)*Kc; n.vy+=(H/2-n.y)*Kc;
+    NODES.forEach(m=>{
+      if(m===n)return;
+      const dx=n.x-m.x,dy=n.y-m.y,d2=dx*dx+dy*dy+1,d=Math.sqrt(d2);
+      const f=Kr/d2;
+      n.vx+=f*dx/d; n.vy+=f*dy/d;
+    });
+  });
+  RAW_EDGES.forEach(e=>{
+    const a=nodeMap[e.from],b=nodeMap[e.to];
+    const dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy)+.01;
+    const tgt=Math.min(W,H)*0.38,f=(d-tgt)*Ks;
+    const fx=f*dx/d,fy=f*dy/d;
+    if(!a.pinned){a.vx+=fx;a.vy+=fy;}
+    if(!b.pinned){b.vx-=fx;b.vy-=fy;}
+  });
+  NODES.forEach(n=>{
+    if(n.pinned)return;
+    n.vx*=damp;n.vy*=damp;
+    n.x=Math.max(50,Math.min(W-50,n.x+n.vx));
+    n.y=Math.max(50,Math.min(H-50,n.y+n.vy));
+    tv+=Math.abs(n.vx)+Math.abs(n.vy);
+  });
+  draw();
+  animId=(tv>0.3)?requestAnimationFrame(animate):null;
+}
+
+function startSim(){if(animId)cancelAnimationFrame(animId);animId=requestAnimationFrame(animate);}
+
+const NODE_R=34;
+let pThresh=0.05,showNS=false,curved=true,hoveredEdge=null,hoveredNode=null;
+
+function pFmt(p){
+  if(p<=0||p<1e-299)return"≈0";
+  if(p<0.001)return p.toExponential(2);
+  return p.toFixed(4);
+}
+function stars(p){return p<0.001?"***":p<0.01?"**":p<0.05?"*":"";}
+function edgeVisible(e){return e.p<=pThresh||(showNS&&isFinite(e.p));}
+function edgeSig(e){return e.p<=pThresh;}
+function edgeCol(e){
+  if(!edgeSig(e))return"rgba(90,90,100,0.3)";
+  return e.beta>0?"#E63946":"#4C9BE8";
+}
+function edgeW(e){return edgeSig(e)?Math.max(1.8,Math.min(Math.abs(e.beta)*9,8)):1;}
+
+function drawArrow(x0,y0,x1,y1,color,lw,curve,opacity){
+  const dx=x1-x0,dy=y1-y0,d=Math.sqrt(dx*dx+dy*dy)+.001;
+  const nx=dx/d,ny=dy/d;
+  const sx0=x0+nx*NODE_R,sy0=y0+ny*NODE_R;
+  const sx1=x1-nx*(NODE_R+10),sy1=y1-ny*(NODE_R+10);
+  const mx=(sx0+sx1)/2,my=(sy0+sy1)/2;
+  const cpx=mx-ny*curve,cpy=my+nx*curve;
+
+  ctx.save();
+  ctx.globalAlpha=opacity;
+  ctx.strokeStyle=color;ctx.fillStyle=color;
+  ctx.lineWidth=lw;ctx.lineCap="round";
+  ctx.beginPath();ctx.moveTo(sx0,sy0);
+  if(Math.abs(curve)>1)ctx.quadraticCurveTo(cpx,cpy,sx1,sy1);
+  else ctx.lineTo(sx1,sy1);
+  ctx.stroke();
+
+  // arrowhead
+  let tx,ty;
+  if(Math.abs(curve)>1){tx=sx1-cpx;ty=sy1-cpy;}
+  else{tx=dx;ty=dy;}
+  const tl=Math.sqrt(tx*tx+ty*ty)+.001;tx/=tl;ty/=tl;
+  const tipX=x1-nx*NODE_R,tipY=y1-ny*NODE_R;
+  const hw=lw*1.9,hl=9+lw;
+  ctx.beginPath();
+  ctx.moveTo(tipX,tipY);
+  ctx.lineTo(tipX-tx*hl-ty*hw,tipY-ty*hl+tx*hw);
+  ctx.lineTo(tipX-tx*hl+ty*hw,tipY-ty*hl-tx*hw);
+  ctx.closePath();ctx.fill();
+  ctx.restore();
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+
+  RAW_EDGES.forEach(e=>{
+    if(!edgeVisible(e))return;
+    const a=nodeMap[e.from],b=nodeMap[e.to];
+    const sig=edgeSig(e);
+    const col=edgeCol(e);
+    const lw=edgeW(e);
+    const isHov=e===hoveredEdge;
+    const hasRev=RAW_EDGES.some(r=>r.from===e.to&&r.to===e.from&&edgeVisible(r));
+    const cv=curved?(hasRev?58:18):0;
+    const op=isHov?1:sig?0.82:0.25;
+
+    drawArrow(a.x,a.y,b.x,b.y,col,isHov?lw+2:lw,cv,op);
+
+    if(sig){
+      const dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy)+.001;
+      let mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+      if(curved&&hasRev){mx-=dy/d*cv*0.4;my+=dx/d*cv*0.4;}
+      const txt=(e.beta>=0?"+":"")+e.beta.toFixed(2);
+      ctx.save();
+      ctx.font=(isHov?"bold ":"")+"10.5px Georgia";
+      const tw=ctx.measureText(txt).width;
+      ctx.fillStyle="rgba(13,15,22,0.8)";
+      ctx.fillRect(mx-tw/2-3,my-7,tw+6,14);
+      ctx.fillStyle=col;ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.fillText(txt,mx,my);
+      ctx.restore();
+    }
+  });
+
+  NODES.forEach(n=>{
+    const isHov=n===hoveredNode;
+    ctx.save();
+    ctx.shadowColor=n.color+"99";ctx.shadowBlur=isHov?26:14;
+    ctx.beginPath();ctx.arc(n.x,n.y,NODE_R,0,Math.PI*2);
+    ctx.fillStyle=n.color;ctx.fill();
+    ctx.restore();
+    ctx.beginPath();ctx.arc(n.x,n.y,NODE_R,0,Math.PI*2);
+    ctx.strokeStyle=isHov?"#fff":"rgba(255,255,255,0.3)";
+    ctx.lineWidth=isHov?2.5:1.5;ctx.stroke();
+    ctx.font="bold 12.5px Georgia";
+    ctx.fillStyle="#fff";ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.fillText(n.label,n.x,n.y);
+    if(n.pinned){
+      ctx.font="9px sans-serif";ctx.fillStyle="#aaa";
+      ctx.fillText("■",n.x+NODE_R*0.72,n.y-NODE_R*0.72);
+    }
+  });
+}
+
+function nodeAt(x,y){return NODES.find(n=>Math.hypot(n.x-x,n.y-y)<NODE_R+6)||null;}
+function edgeAt(mx,my){
+  let best=null,bestD=14;
+  RAW_EDGES.forEach(e=>{
+    if(!edgeVisible(e))return;
+    const a=nodeMap[e.from],b=nodeMap[e.to];
+    for(let t=0.15;t<0.85;t+=0.07){
+      const d=Math.hypot(mx-(a.x+(b.x-a.x)*t),my-(a.y+(b.y-a.y)*t));
+      if(d<bestD){bestD=d;best=e;}
+    }
+  });
+  return best;
+}
+
+let dragNode=null,dragOX=0,dragOY=0;
+canvas.addEventListener("mousedown",e=>{
+  const r=canvas.getBoundingClientRect();
+  const n=nodeAt(e.clientX-r.left,e.clientY-r.top);
+  if(n){dragNode=n;dragOX=e.clientX-r.left-n.x;dragOY=e.clientY-r.top-n.y;canvas.classList.add("dragging");if(animId){cancelAnimationFrame(animId);animId=null;}}
+});
+canvas.addEventListener("mousemove",e=>{
+  const r=canvas.getBoundingClientRect();
+  const mx=e.clientX-r.left,my=e.clientY-r.top;
+  if(dragNode){dragNode.x=mx-dragOX;dragNode.y=my-dragOY;dragNode.pinned=true;draw();return;}
+  const n=nodeAt(mx,my);
+  const ed=n?null:edgeAt(mx,my);
+  hoveredNode=n;hoveredEdge=ed;
+  const info=document.getElementById("info");
+  if(n){
+    const out=RAW_EDGES.filter(e=>e.from===n.id&&edgeVisible(e));
+    const inn=RAW_EDGES.filter(e=>e.to===n.id&&edgeVisible(e));
+    info.innerHTML=`<b style="color:${n.color}">${n.label}</b><br>`+
+      `<span style="color:#8b8fa8">→ sends to:</span> ${out.map(e=>`${LABELS[e.to]} <span style="color:${e.beta>0?"#E63946":"#4C9BE8"}">${(e.beta>=0?"+":"")+e.beta.toFixed(3)}</span>`).join(", ")||"<i>none visible</i>"}<br>`+
+      `<span style="color:#8b8fa8">← receives from:</span> ${inn.map(e=>`${LABELS[e.from]} <span style="color:${e.beta>0?"#E63946":"#4C9BE8"}">${(e.beta>=0?"+":"")+e.beta.toFixed(3)}</span>`).join(", ")||"<i>none visible</i>"}`;
+  } else if(ed){
+    const col=ed.beta>0?"#E63946":"#4C9BE8";
+    info.innerHTML=`<b>${LABELS[ed.from]} → ${LABELS[ed.to]}</b><br>`+
+      `<span style="color:${col}">β = ${(ed.beta>=0?"+":"")+ed.beta.toFixed(3)}</span> &nbsp; SE = ${ed.se.toFixed(3)}<br>`+
+      `p = ${pFmt(ed.p)} ${stars(ed.p)}<br>`+
+      `N instruments = ${ed.n}<br>`+
+      `<span style="color:${edgeSig(ed)?"#2A9D8F":"#8b8fa8"}">${edgeSig(ed)?"✓ Significant":"✗ Below threshold"}</span>`;
+  } else {
+    info.textContent="Hover over a node or edge to see details.";
+  }
+  draw();
+});
+canvas.addEventListener("mouseup",()=>{if(dragNode){canvas.classList.remove("dragging");dragNode=null;}});
+canvas.addEventListener("dblclick",e=>{
+  const r=canvas.getBoundingClientRect();
+  const n=nodeAt(e.clientX-r.left,e.clientY-r.top);
+  if(n){n.pinned=!n.pinned;draw();}
+});
+
+document.getElementById("ptslider").addEventListener("input",function(){
+  pThresh=P_THRESHOLDS[+this.value];
+  document.getElementById("ptlabel").textContent=P_LABELS[+this.value];
+  updateTable();draw();
+});
+document.getElementById("showns").addEventListener("change",e=>{showNS=e.target.checked;draw();});
+document.getElementById("curved").addEventListener("change",e=>{curved=e.target.checked;draw();});
+
+function fitView(){
+  const xs=NODES.map(n=>n.x),ys=NODES.map(n=>n.y);
+  const pad=70,minX=Math.min(...xs)-pad,maxX=Math.max(...xs)+pad,minY=Math.min(...ys)-pad,maxY=Math.max(...ys)+pad;
+  const s=Math.min(W/(maxX-minX),H/(maxY-minY),1.2);
+  const ox=(W-(maxX-minX)*s)/2-minX*s,oy=(H-(maxY-minY)*s)/2-minY*s;
+  NODES.forEach(n=>{n.x=n.x*s+ox;n.y=n.y*s+oy;});draw();
+}
+function resetLayout(){NODES.forEach(n=>{n.pinned=false;n.vx=0;n.vy=0;});initPositions();startSim();}
+
+function updateTable(){
+  const sorted=[...RAW_EDGES].sort((a,b)=>a.p-b.p);
+  document.getElementById("tbl").innerHTML=sorted.map(e=>{
+    const sig=edgeSig(e);
+    const col=e.beta>0?"#E63946":"#4C9BE8";
+    return`<tr class="${sig?"sig":""}"><td>${LABELS[e.from]}</td><td>→</td><td>${LABELS[e.to]}</td>`+
+      `<td style="color:${col}">${(e.beta>=0?"+":"")+e.beta.toFixed(3)}</td>`+
+      `<td>${e.se.toFixed(3)}</td><td>${pFmt(e.p)}${stars(e.p)}</td><td>${e.n}</td></tr>`;
+  }).join("");
+}
+
+resize();initPositions();updateTable();startSim();
+</script>
+</body>
+</html>
