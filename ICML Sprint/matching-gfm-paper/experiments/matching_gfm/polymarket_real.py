@@ -164,6 +164,29 @@ def load_polymarket_market(
         if condition_id:
             market_by_condition[condition_id] = market
 
+    for trade in snapshot.trades:
+        condition_id = trade.get("conditionId") or ""
+        if not condition_id or condition_id in market_by_condition:
+            continue
+        market_by_condition[condition_id] = {
+            "conditionId": condition_id,
+            "question": trade.get("title", ""),
+            "slug": trade.get("slug", ""),
+            "_event_title": trade.get("title", ""),
+            "_event_slug": trade.get("eventSlug", trade.get("slug", "")),
+            "_category": "",
+            "volumeNum": 0.0,
+            "liquidityNum": 0.0,
+            "volume24hr": 0.0,
+            "competitive": 0.0,
+            "commentCount": 0.0,
+            "active": 1.0,
+            "closed": 0.0,
+            "enableOrderBook": 1.0,
+            "outcomes": json.dumps([trade.get("outcome", "")]),
+            "outcomePrices": json.dumps([trade.get("price", 0.0)]),
+        }
+
     filtered_trades = [trade for trade in snapshot.trades if (trade.get("conditionId") or "") in market_by_condition]
     wallet_counts = Counter(trade.get("proxyWallet", "") for trade in filtered_trades if trade.get("proxyWallet"))
     market_counts = Counter(trade.get("conditionId", "") for trade in filtered_trades if trade.get("conditionId"))
@@ -185,7 +208,15 @@ def load_polymarket_market(
         if trade.get("proxyWallet", "") in top_wallets and trade.get("conditionId", "") in top_markets
     ]
     if not trades:
-        raise ValueError("No Polymarket trades remained after filtering; try increasing max_trade_pages or lowering minimum thresholds.")
+        top_wallets = {wallet for wallet, _ in wallet_counts.most_common(max_wallets) if wallet}
+        top_markets = {condition_id for condition_id, _ in market_counts.most_common(max_markets) if condition_id}
+        trades = [
+            trade
+            for trade in filtered_trades
+            if trade.get("proxyWallet", "") in top_wallets and trade.get("conditionId", "") in top_markets
+        ]
+    if not trades:
+        raise ValueError("No Polymarket trades remained after filtering; try increasing max_trade_pages or max_wallets/max_markets.")
 
     buyers = sorted({trade["proxyWallet"] for trade in trades})
     sellers = sorted({trade["conditionId"] for trade in trades})
