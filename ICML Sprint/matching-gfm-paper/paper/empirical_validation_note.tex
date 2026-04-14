@@ -1,0 +1,50 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+
+\title{Empirical Validation Note for Matching GFM}
+\author{Working empirical note}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\paragraph{Scope.}
+This note summarizes the current executable experiment stack for the
+matching-GFM project. It is intentionally narrower than the full proposal.
+The present implementation covers a synthetic temporal bipartite market with
+typed edges, preference recovery, one-to-one matching, and stability-aware
+evaluation.
+
+\paragraph{Implemented components.}
+The current runner includes:
+\begin{itemize}
+  \item a synthetic temporal bipartite multigraph generator;
+  \item a pointwise gradient-boosted baseline;
+  \item a compact graph-matching model with recency weighting, Sinkhorn
+  relaxation, and blocking-pair regularization;
+  \item matching metrics covering preference recovery, stability, welfare, and
+  held-out ranking quality.
+\end{itemize}
+
+\IfFileExists{generated_results.tex}{
+  \input{generated_results.tex}
+}{
+  \paragraph{Missing generated results.}
+  Run \texttt{python3 experiments/render\_empirical\_note.py} from the project
+  root to materialize the current tables and figure references.
+}
+
+\paragraph{Interpretive caution.}
+These results should be read as proof of viability for the paper scaffold, not
+as the final empirical claim of a graph foundation model. The compact matcher is
+still a low-parameter approximation to the fuller temporal-graph agenda.
+
+\end{document}

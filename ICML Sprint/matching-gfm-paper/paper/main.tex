@@ -1,0 +1,286 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage[numbers]{natbib}
+\usepackage[capitalize,noabbrev]{cleveref}
+
+\newtheorem{definition}{Definition}[section]
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{remark}{Remark}[section]
+
+\newcommand{\buyers}{\mathcal{B}}
+\newcommand{\sellers}{\mathcal{S}}
+\newcommand{\edges}{\mathcal{E}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\inner}[2]{\langle #1, #2 \rangle}
+
+\title{Graph Foundation Models for Two-Sided Market Matching\\
+\large Working Paper and Experimental Scaffold}
+\author{Working draft}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Classical matching theory gives strong guarantees once agents' preference
+orderings are known, but real platforms do not observe preferences directly.
+They observe timestamped interaction traces on dynamic bipartite graphs. This
+paper develops a working bridge between those two views. We formalize the market
+as a temporal bipartite multigraph, study preference recovery from typed
+interaction histories, and compose recovered scores with both soft and hard
+matching operators. The current contribution is intentionally pragmatic: a
+complete LaTeX paper draft together with a runnable synthetic experiment stack.
+The implementation compares a pointwise gradient-boosted baseline against a
+compact graph-matching model that combines recency-weighted typed aggregation, a
+Sinkhorn relaxation, and a blocking-pair penalty. On the current synthetic run,
+the graph-aware model improves buyer-side Kendall-$\tau$, stability ratio, and
+social welfare relative to the pointwise baseline, while still falling short of
+the oracle Gale--Shapley upper bound. The paper therefore serves both as a
+research statement and as a concrete foundation for a larger temporal graph
+foundation model programme.
+\end{abstract}
+
+\section{Introduction}
+
+Two-sided matching theory, beginning with Gale and Shapley, studies markets in
+which agents on one side are matched to agents on another side under latent
+preferences \citep{gale1962college}. In the classical formulation, those
+preferences are given. In operational platforms such as food delivery,
+prediction markets, labor marketplaces, and acquisition search, they are not.
+Instead, the observable object is a history of timestamped interactions:
+views, messages, orders, bids, fills, cancels, and repeated engagements.
+
+Modern industrial matching stacks often collapse this history into a pointwise
+prediction problem. A tabular model scores buyer--seller pairs independently,
+and a matching routine is applied only after those scores have already been
+produced. That separation is convenient, but it throws away exactly the
+relational structure that matching markets generate: repeated encounters,
+typed edges, temporal recency, market thickness, and cross-agent exposure.
+
+This paper works toward a graph-native alternative. The central hypothesis is
+that a temporal graph representation can recover latent preference structure
+well enough to improve the economic properties of the induced matching, not
+just its ranking metrics. That requires more than link prediction. The
+evaluation target must include stability and welfare, because the output is a
+market allocation rather than a list of pairwise probabilities.
+
+The project in this repository is the first executable milestone for that
+larger agenda. It does three things:
+\begin{enumerate}
+  \item formalizes a two-sided market as a temporal bipartite multigraph;
+  \item implements a compact graph-matching model that approximates the paper's
+  preference-recovery and matching pipeline;
+  \item evaluates the resulting matchings against a pointwise baseline and an
+  oracle stable-matching upper bound.
+\end{enumerate}
+
+\section{Problem Formulation}
+
+\begin{definition}[Temporal bipartite multigraph]
+A temporal bipartite multigraph is a tuple
+\[
+G = (\buyers, \sellers, \edges, \mathcal{R}, \tau, \phi, \psi),
+\]
+where $\buyers$ and $\sellers$ are disjoint finite node sets, $\mathcal{R}$ is
+a finite set of edge types, $\edges \subseteq \buyers \times \sellers \times
+\mathcal{R} \times \R_{\ge 0}$ is the set of typed timestamped edges, $\tau$
+extracts edge timestamps, $\phi$ maps nodes to features, and $\psi$ maps edges
+to edge attributes.
+\end{definition}
+
+The proposal motivating this paper focuses on recovering latent preference
+profiles from the observed graph and then feeding those preferences into a
+matching operator. Let $u_b(s)$ denote buyer $b$'s latent utility for seller
+$s$ and $u_s(b)$ the seller-side analogue. Those utilities induce preference
+orderings but are not directly observed.
+
+\begin{definition}[Preference recovery map]
+A preference recovery map is a measurable operator
+\[
+\Pi : G^{(\le t)} \mapsto \succ^{(t)},
+\]
+from the graph history up to time $t$ to a profile of buyer-side and
+seller-side preference orderings.
+\end{definition}
+
+This framing highlights the core estimation question: can a temporal graph
+model recover the ordinal structure of the latent utilities closely enough that
+the resulting matching behaves as if the true preferences had been observed?
+
+\subsection{Matching and Stability}
+
+Given buyer-side scores $\hat U^{B} \in \R^{|\buyers| \times |\sellers|}$ and
+seller-side scores $\hat U^{S} \in \R^{|\sellers| \times |\buyers|}$, we study
+one-to-one matchings. A hard matching is computed with deferred acceptance,
+while a differentiable relaxation is computed with Sinkhorn normalization.
+
+\begin{definition}[Blocking pair]
+Let $\mu$ be a matching. A pair $(b,s)$ is blocking under latent utilities if
+\[
+u_b(s) > u_b(\mu(b))
+\quad\text{and}\quad
+u_s(b) > u_s(\mu^{-1}(s)),
+\]
+where unmatched partners are treated as utility $-\infty$.
+\end{definition}
+
+\begin{remark}
+For the current synthetic scaffold, blocking-pair counts are computed against
+the latent utilities used to generate the market. In real data this would need
+to be approximated through outcome proxies or structural assumptions.
+\end{remark}
+
+\begin{proposition}[Approximate stability via preference error]
+Suppose the recovered preference ordering for each buyer and seller differs from
+the latent ordering by at most $k$ pairwise inversions, and suppose rank
+displacements translate to utility error at Lipschitz rate $L / n$, where $n$
+is the market size. Then a matching that is stable under the recovered
+preferences is $O(Lk / n)$-approximately stable under the latent utilities.
+\end{proposition}
+
+\noindent\textbf{Proof sketch.}
+Each inversion perturbs the local rank only finitely, so the utility of the
+matched partner can move by at most $O(Lk / n)$ under the assumed rank-to-value
+regularity. A blocking pair under the latent utilities must therefore produce
+only a bounded improvement unless the recovered preference ordering has made a
+much larger error. The proposition is informal, but it captures the reason to
+measure Kendall-$\tau$ in the experiment section.
+
+\section{Modeling Approach}
+
+\subsection{Compact Graph-Matching Model}
+
+The long-term target is a temporal graph foundation model. The current
+implementation is intentionally smaller. It aggregates typed buyer--seller
+interactions with an exponential recency decay, forms buyer and seller context
+vectors, and combines those with observed node attributes into low-dimensional
+embeddings. The resulting score matrices are
+\[
+\hat U^{B}_{bs} = f_B(x_b, x_s, h_{bs}),
+\qquad
+\hat U^{S}_{sb} = f_S(x_s, x_b, h_{bs}),
+\]
+where $x_b$ and $x_s$ are buyer and seller features and $h_{bs}$ denotes the
+typed history tensor for the pair.
+
+This design is not yet a full message-passing network. It is closer to a
+hand-parameterized graph layer with shared typed aggregators. That is a feature,
+not a bug, for the current stage. It keeps the paper's end-to-end logic
+transparent while still testing the actual market-level claim.
+
+\subsection{Soft Matching and Stability Loss}
+
+Given a combined affinity matrix $M$, the implementation computes a soft
+matching matrix $P$ with Sinkhorn normalization, following the
+entropy-regularized optimal transport perspective \citep{cuturi2013sinkhorn}.
+The objective is a sum of:
+\begin{enumerate}
+  \item a reconstruction term aligning the learned scores with observed
+  recency-weighted interactions;
+  \item a blocking-pair penalty that suppresses mutually beneficial deviations;
+  \item a welfare term that rewards matchings with higher joint utility.
+\end{enumerate}
+
+That objective is a tractable proxy for the larger proposal's idea: train the
+representation and matching layers jointly rather than treating matching as an
+afterthought after pair scoring.
+
+\section{Synthetic Experimental Design}
+
+\subsection{Market Generator}
+
+The synthetic market implemented in this repository generates buyer and seller
+feature vectors, latent utility matrices, and typed temporal interactions. The
+current edge types are \texttt{view}, \texttt{message}, and \texttt{order}.
+Buyers sample sellers according to a softmax over their latent utilities with a
+small exposure term, and richer edge types are emitted with higher probability
+when the joint buyer-side and seller-side utility is high.
+
+This synthetic setup is deliberately narrow:
+\begin{itemize}
+  \item one-to-one matching only;
+  \item equal market size on both sides;
+  \item a single market rather than a pretraining corpus;
+  \item evaluation against known latent utilities.
+\end{itemize}
+
+The narrowness is useful. It lets us ask the paper's main question before we
+invest in the heavier ChronoGraph-style stack: do graph-aware recovered
+preferences improve matching outcomes relative to pointwise scoring?
+
+\subsection{Evaluation Protocol}
+
+The current experiment compares three systems:
+\begin{enumerate}
+  \item \texttt{pointwise\_gbm}: a tabular baseline trained on pair features and
+  aggregate history statistics;
+  \item \texttt{compact\_graph\_matcher}: the graph-aware scorer with Sinkhorn
+  and blocking-pair regularization;
+  \item \texttt{oracle\_gale\_shapley}: deferred acceptance on the true latent
+  buyer-side and seller-side utilities.
+\end{enumerate}
+
+Metrics include:
+\begin{itemize}
+  \item buyer-side and seller-side Kendall-$\tau$ against the latent utilities;
+  \item a true blocking-pair stability ratio;
+  \item latent social welfare of the induced hard matching;
+  \item MRR and future-MRR ranking diagnostics.
+\end{itemize}
+
+\section{Current Results}
+
+\IfFileExists{generated_results.tex}{
+  \input{generated_results.tex}
+}{
+  \paragraph{Missing generated results.}
+  Run \texttt{python3 experiments/render\_empirical\_note.py} from the project
+  root to materialize the current tables and figure for this section.
+}
+
+\section{Discussion}
+
+The current results are encouraging for a first scaffold, but they should be
+read carefully. The compact graph-matching model is still much closer to a
+structured research baseline than to a modern graph foundation model. It has no
+cross-market pretraining, no learned temporal attention, and no explicit
+many-to-one capacity constraints. The current experiment is therefore evidence
+for the paper's \emph{direction}, not yet for its final strongest claim.
+
+The main conceptual takeaway is nonetheless clear. The pointwise baseline is
+competitive on pair prediction, but it does not optimize the market object we
+ultimately care about. Once we evaluate at the level of induced matchings,
+graph-aware preference recovery already looks more appropriate. The gap between
+the compact matcher and the oracle also clarifies the empirical opportunity:
+there is enough headroom to justify the more ambitious temporal GFM programme.
+
+\section{Next Steps}
+
+The immediate next steps are straightforward:
+\begin{enumerate}
+  \item replace the compact aggregator with a true temporal GNN or temporal GFM
+  encoder;
+  \item add the missing graph baselines, especially static bipartite graph
+  models and temporal graph baselines such as TGN-style encoders
+  \citep{rossi2020temporal,trivedi2019dyrep};
+  \item port the evaluation to a real trader--market slice from the Polymarket
+  stack in the broader repository;
+  \item extend the matching operator to many-to-one and many-to-many settings,
+  where the classical stability notion becomes more subtle
+  \citep{rothsotomayor1990two}.
+\end{enumerate}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}
