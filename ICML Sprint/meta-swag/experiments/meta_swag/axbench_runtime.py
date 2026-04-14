@@ -5,6 +5,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+import torch
+
 
 @dataclass(frozen=True)
 class ExternalRepoSpec:
@@ -73,3 +75,17 @@ def import_alpaca_eval():
     import alpaca_eval  # type: ignore
 
     return alpaca_eval
+
+
+def ensure_single_process_distributed_compat() -> None:
+    if not torch.distributed.is_available() or torch.distributed.is_initialized():
+        return
+
+    original_get_rank = torch.distributed.get_rank
+
+    def _safe_get_rank(*args, **kwargs):
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            return original_get_rank(*args, **kwargs)
+        return 0
+
+    torch.distributed.get_rank = _safe_get_rank

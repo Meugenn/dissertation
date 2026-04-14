@@ -4,7 +4,10 @@ This file is the living technical report for the Meta-SWAG project. Unlike the p
 
 Primary companion files:
 
+- Master document: [master-report.md](/Users/meuge/coding/maynard/ICML%20Sprint/meta-swag/master-report.md:1)
 - Paper draft: [paper-draft.md](/Users/meuge/coding/maynard/ICML%20Sprint/meta-swag/paper-draft.md:1)
+- HyperSteer parallel paper: [hypersteer_main.tex](/Users/meuge/coding/maynard/ICML%20Sprint/meta-swag/hypersteer_main.tex:1)
+- HyperSteer drafting note: [hypersteer-paper-draft.md](/Users/meuge/coding/maynard/ICML%20Sprint/meta-swag/hypersteer-paper-draft.md:1)
 - LaTeX paper: [main.tex](/Users/meuge/coding/maynard/ICML%20Sprint/meta-swag/main.tex:1)
 - Current PDF: [main.pdf](/Users/meuge/coding/maynard/ICML%20Sprint/meta-swag/main.pdf)
 - Literature review: [literature-review.md](/Users/meuge/coding/maynard/ICML%20Sprint/meta-swag/literature-review.md:1)
@@ -32,6 +35,8 @@ Build a first credible empirical and theoretical package for **Meta-SWAG**:
 - Matrix-game experiment scaffold is implemented and runs end-to-end.
 - Goodhart-resilient weighting schemes are now part of the experiment scaffold.
 - Kim et al. persona bundles are integrated locally and ready for iterated-game follow-up runs.
+- A retention-aware AxBench and AlpacaEval benchmark runner is now implemented for LoRA and PreferenceLoRA checkpoint trajectories.
+- A first Posterior HyperSteer benchmark runner is now implemented for retained HyperSteer hypernetwork checkpoints.
 - Initial results exist, but **should be treated as exploratory only**.
 
 ### 1.3 What is done
@@ -44,12 +49,16 @@ Build a first credible empirical and theoretical package for **Meta-SWAG**:
 - Created a LaTeX version and compiled a PDF.
 - Reviewed literature and downloaded the core adjacent papers into [papers](/Users/meuge/coding/maynard/ICML%20Sprint/meta-swag/papers).
 - Built a first experiment package under [experiments](/Users/meuge/coding/maynard/ICML%20Sprint/meta-swag/experiments).
+- Added a master document that cross-references the paper, experiments, literature, and implementation status.
+- Implemented adapter-only checkpoint retention, posterior aggregation, and a benchmark runner for AxBench and AlpacaEval.
+- Implemented a first Posterior HyperSteer path with hypernetwork checkpoint retention, posterior aggregation, and optional risk-aware factor selection.
+- Drafted a parallel paper centered on improving HyperSteer with posteriorization and omega-inspired robustness mechanisms.
 
 ### 1.4 What is not done
 
 - No original dissertation simulation code has been recovered from this workspace.
 - No benchmark-scale iterated-game study is implemented yet; only a first exact-dynamics runner exists.
-- No LoRA checkpoint collection or LLM posterior fitting is implemented yet.
+- No benchmark-grade LLM result is available yet, even though LoRA checkpoint collection and posterior fitting are now implemented in code.
 - No final paper-quality empirical claim is justified by current numbers.
 
 ## 2. Source Grounding
@@ -308,8 +317,8 @@ The paper PDF uses a local ICML-style scaffold, not the official upstream worksh
    - Extend zero-sum and coordination-style games to `N = 3, 4`.
 
 6. **LoRA posterior tracking**
-   - Create a checkpoint collection utility for aligned LLM LoRA weights.
-   - Fit Meta-SWAG over retained adapters.
+   - Expand the implemented AxBench retention path from unit-tested code to a completed smoke benchmark.
+   - Promote the best-performing AxBench methods into AlpacaEval transfer runs.
 
 ### 10.3 LLM alignment experiments
 
@@ -321,6 +330,11 @@ The paper PDF uses a local ICML-style scaffold, not the official upstream worksh
 
 8. **Algorithm-agnostic extension**
    - Repeat with PPO and GRPO after DPO works.
+
+9. **Posterior HyperSteer**
+   - Run the new HyperSteer posterior runner on Concept10 as a smoke benchmark.
+   - Expand to Concept500 held-out steering prompts after the runtime environment is stable.
+   - Turn on posterior-sampled factor statistics once the mean-only path is stable.
 
 ## 11. Action Log
 
@@ -339,6 +353,9 @@ The paper PDF uses a local ICML-style scaffold, not the official upstream worksh
 - Added low-rank eigenvalue logging for matrix-game runs.
 - Added a first Kim-style iterated IPD/RPS adaptation runner with artifact export.
 - Performed a critical paper pass and started implementing fixes: softened theorem claims, clarified Goodhart evaluation separation, and replaced the manual bibliography with BibTeX citations.
+- Added the cross-referenced master document for the project.
+- Implemented the AxBench Meta-SWAG pipeline: adapter flatten/restore utilities, ESS and threshold aggregation, retention-aware LoRA training, and the first benchmark runner.
+- Implemented the first Posterior HyperSteer pipeline: retained hypernetwork checkpoints, Goodhart-resilient posterior aggregation, and a dedicated HyperSteer benchmark runner.
 
 ## 12. Decisions and Defaults
 

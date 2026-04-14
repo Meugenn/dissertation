@@ -1,0 +1,338 @@
+\documentclass[10pt]{article}
+\usepackage[accepted]{icml2026}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{float}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=blue!50!black,
+  urlcolor=blue!50!black
+}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\diag}{\mathrm{diag}}
+\newcommand{\ESS}{\mathrm{ESS}}
+\newcommand{\HM}{\mathrm{HM}}
+\newcommand{\argmax}{\mathop{\mathrm{arg\,max}}}
+
+\icmltitlerunning{Posterior HyperSteer}
+
+\title{\textbf{Posterior HyperSteer: Goodhart-Resilient Bayesian Hypernetwork Steering at Scale}}
+\author{}
+\date{}
+
+\begin{document}
+
+\twocolumn[
+\maketitle
+\begin{center}
+\vspace{-1.75em}
+\begin{minipage}{0.92\textwidth}
+\begin{abstract}
+HyperSteer is the current strongest activation-steering method on AxBench, but it remains a point-estimate method: a single hypernetwork checkpoint predicts a single steering vector, and steering strength is chosen by a mean-score sweep with no explicit notion of posterior uncertainty, evidence weighting, or robustness to oversteering. We introduce \textbf{Posterior HyperSteer}, a Bayesian extension of HyperSteer that places a SWAG-style posterior over the late hypernetwork trajectory and uses Goodhart-resilient weighting to avoid collapse onto proxy-maximizing checkpoints. The method combines three ingredients: a posterior over retained HyperSteer checkpoints, ESS-constrained or thresholded evidence weighting based on held-out AxBench validation scores, and an omega-inspired training view in which evidence quality and alignment stability explicitly shape updates. At inference time, Posterior HyperSteer performs uncertainty-aware factor selection by maximizing a risk-sensitive objective over posterior predictive steering performance. This turns uncertainty from a diagnostic into a control signal. The resulting paper is benchmark-first and directly comparable to the current state of the art: its central claim is that Bayesian posteriorization is a natural way to improve HyperSteer on the exact robustness tradeoffs AxBench already measures.
+\end{abstract}
+\end{minipage}
+\end{center}
+\vspace{0.8em}
+]
+
+\section{Introduction}
+
+Activation steering has become one of the most promising ways to control language models without full fine-tuning. Among current steering methods on AxBench, HyperSteer is the strongest activation-steering baseline: a shared hypernetwork maps a natural-language steering prompt, optionally together with base-prompt context and base-model activations, to a steering vector that is injected into the residual stream \citep{sun2025hypersteer}. This gives HyperSteer a crucial advantage over per-concept supervised steering methods. It amortizes steering-vector generation across many concepts and generalizes to held-out steering prompts.
+
+That scaling result is important, but HyperSteer is still a point-estimate system. A single trained hypernetwork checkpoint generates one steering vector per prompt pair, and steering strength is chosen by sweeping a scalar factor and selecting the best aggregate validation score. This means HyperSteer inherits exactly the weakness that AxBench is well-designed to expose: the same mechanism that increases concept relevance can also degrade instruction following and fluency \citep{wu2025axbench}. HyperSteer wins anyway because its mean behavior is strong, but the method has no explicit way to represent uncertainty over steering vectors, no anti-collapse checkpoint weighting rule, and no uncertainty-aware mechanism for selecting steering strength.
+
+This paper argues that the next strategic step is not to replace HyperSteer, but to posteriorize it. We introduce \emph{Posterior HyperSteer}, a Bayesian extension that applies a Meta-SWAG-style posterior approximation to the HyperSteer training trajectory \citep{maddox2019swag}. Instead of selecting one final checkpoint and one best factor by mean validation score alone, Posterior HyperSteer aggregates retained checkpoints with Goodhart-resilient weighting and then chooses steering strength by balancing posterior mean performance against posterior uncertainty. This makes the method directly responsive to the failure mode that AxBench measures.
+
+The framing here is intentionally narrower than the broader Meta-SWAG paper. The goal is not to unify MARL and LLM alignment in one move. The goal is to improve the strongest existing AxBench method in a way that is benchmark-relevant, measurable, and empirically tractable. That narrower framing gives the paper a cleaner anchor: HyperSteer is the incumbent state of the art, AxBench is the evaluation harness, and Bayesian posteriorization is the proposed robustness mechanism.
+
+Our proposal combines three ideas. First, we place a SWAG-style posterior over retained HyperSteer checkpoints. Second, we use Goodhart-resilient evidence weighting, with ESS-constrained softmax weighting as the main method and thresholded weighting as the main ablation. Third, we reinterpret the evidence and alignment parts of the broader omega-gradient perspective for the steering setting: evidence quality should scale updates, and alignment stability should influence the training signal rather than appearing only at evaluation time. The result is still recognizably HyperSteer, but no longer purely point-estimate.
+
+\section{HyperSteer and the AxBench Opportunity}
+
+\subsection{HyperSteer Setup}
+
+We follow the HyperSteer setting closely. Let $x$ be a base prompt, $s$ a natural-language steering prompt, $B$ a frozen base language model, and $H_\phi$ a hypernetwork with parameters $\phi$ that predicts a steering vector $\Delta_\phi(x,s)$. HyperSteer intervenes on a hidden state $h$ of $B$ by
+\begin{equation}
+h \leftarrow h + a \, \Delta_\phi(x,s),
+\end{equation}
+where $a > 0$ is the steering factor. The resulting steered response is
+\begin{equation}
+\hat{y}_{a,\phi}(x,s) = B\!\left(x \mid h \leftarrow h + a \Delta_\phi(x,s)\right).
+\end{equation}
+
+AxBench evaluates the response using three discrete scores \citep{wu2025axbench}:
+\begin{itemize}[leftmargin=1.5em]
+  \item concept relevance $C(a,\phi)$,
+  \item instruction relevance $I(a,\phi)$,
+  \item fluency $F(a,\phi)$.
+\end{itemize}
+The final steering score is the strict harmonic mean
+\begin{equation}
+S(a,\phi) = \HM\!\big(C(a,\phi), I(a,\phi), F(a,\phi)\big).
+\end{equation}
+
+This benchmark is unusually well matched to a Bayesian steering story. It does not reward concept relevance in isolation. It directly operationalizes the Goodhart tradeoff: stronger steering can help $C$ while hurting $I$ or $F$.
+
+\subsection{Where HyperSteer Is Still Weak}
+
+HyperSteer’s strengths are clear \citep{sun2025hypersteer}, but four limitations remain.
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Point-estimate checkpointing.} The final method is one hypernetwork checkpoint.
+  \item \textbf{Mean-only factor selection.} The steering factor is chosen by average validation score alone.
+  \item \textbf{No anti-collapse weighting.} Late checkpoints can be favored because they optimize a proxy too aggressively.
+  \item \textbf{No explicit robustness objective.} The training loss does not directly encode factor stability or uncertainty-sensitive deployment.
+\end{enumerate}
+
+The central claim of this paper is that HyperSteer is now strong enough that these limitations matter more than further brute-force scaling.
+
+\section{Posterior HyperSteer}
+
+\subsection{Posterior over Retained Hypernetwork Checkpoints}
+
+Let $\phi_1,\dots,\phi_T$ be HyperSteer checkpoints after burn-in, and let $\{\varphi_k\}_{k=1}^K$ be the retained late checkpoints. Each retained checkpoint induces a steering map $(x,s) \mapsto \Delta_{\varphi_k}(x,s)$. We define a Gaussian posterior
+\begin{equation}
+q_T(\phi) = \mathcal{N}(\mu_T,\Sigma_T),
+\end{equation}
+using a SWAG-style diagonal-plus-low-rank approximation fit on the retained trajectory \citep{maddox2019swag}. The weighted mean is
+\begin{equation}
+\mu_T = \sum_{k=1}^K w_k \varphi_k,
+\end{equation}
+and the covariance follows the standard diagonal-plus-low-rank form on the retained checkpoint buffer.
+
+When full hypernetwork posteriorization is too expensive, the practical fallback is to posteriorize a lower-dimensional subspace: steering-vector outputs, low-rank intervention parameters, or a final steering head. The paper’s main conceptual object remains the posterior over retained HyperSteer checkpoints.
+
+\subsection{Evidence Scores and Goodhart-Resilient Weights}
+
+Each retained checkpoint receives an evidence score $m_k$ computed on a held-out AxBench validation slice. The default choice is the checkpoint’s own validation harmonic mean after selecting its own best steering factor on the validation split. This gives a clean separation between:
+\begin{itemize}[leftmargin=1.5em]
+  \item checkpoint weighting,
+  \item factor selection,
+  \item and final test reporting.
+\end{itemize}
+
+We consider five aggregation rules:
+\begin{itemize}[leftmargin=1.5em]
+  \item `map`: final retained checkpoint;
+  \item `uniform`: uniform average over retained checkpoints;
+  \item `softmax`: $w_k \propto \exp(\beta m_k)$;
+  \item `ess`: choose $\beta$ so that $\ESS(w)$ stays above a floor;
+  \item `threshold`: keep checkpoints above a quantile threshold and weight uniformly.
+\end{itemize}
+Our main recommendation is to make `ess` the primary method and `threshold` the primary ablation.
+
+\subsection{Posterior Predictive Steering}
+
+Posterior HyperSteer can be used in two ways:
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Parameter posterior mode:} sample $\phi \sim q_T$ and generate $\Delta_\phi(x,s)$.
+  \item \textbf{Vector posterior mode:} average steering vectors directly,
+  \begin{equation}
+  \bar{\Delta}(x,s) = \E_{\phi \sim q_T}[\Delta_\phi(x,s)].
+  \end{equation}
+\end{enumerate}
+The first route is the cleaner Bayesian object; the second may be cheaper operationally.
+
+\subsection{Uncertainty-Aware Factor Selection}
+
+Once we have a posterior over HyperSteer, the steering factor should no longer be selected by mean validation score alone. For each factor $a$ in a finite sweep, define
+\begin{equation}
+\mu(a) = \E_{\phi \sim q_T}[S(a,\phi)],
+\qquad
+\sigma(a) = \sqrt{\Var_{\phi \sim q_T}[S(a,\phi)]}.
+\end{equation}
+Then choose
+\begin{equation}
+a^*(x,s)
+=
+\argmax_{a \in \mathcal{A}}
+\bigl(\mu(a) - \tau \sigma(a)\bigr),
+\end{equation}
+where $\tau \ge 0$ controls robustness aversion.
+
+This gives a simple deployment interpretation:
+\begin{itemize}[leftmargin=1.5em]
+  \item $\tau=0$ recovers mean-only factor selection;
+  \item larger $\tau$ prefers factors that remain stable across posterior samples;
+  \item high-uncertainty prompts are automatically steered more conservatively.
+\end{itemize}
+
+\section{Omega-Inspired Training View}
+
+The broader omega-gradient framework decomposes updates into exploration, exploitation, evidence, alignment, and opponent-shaping terms. Not all of these transfer literally to the single-model steering setting, but the evidence and alignment components transfer cleanly and the shaping term has a useful bilevel reinterpretation.
+
+\subsection{Evidence-Weighted HyperSteer Updates}
+
+The simplest transfer is evidence weighting. Updates should not all be trusted equally. Let $w_t$ denote a batch-level, concept-level, or checkpoint-level evidence weight derived from gradient variance or held-out validation reliability. Then the update becomes
+\begin{equation}
+\phi_{t+1}
+=
+\phi_t
+-
+\eta_t \, w_t \, \nabla_\phi L_t.
+\end{equation}
+This is the most direct analog of evidence-weighted policy gradient in the HyperSteer setting.
+
+\subsection{Alignment-Stability Regularization}
+
+HyperSteer’s real deployment objective is not concept activation alone. It is the tradeoff among concept relevance, instruction following, and fluency. The training objective should therefore expose at least part of that tradeoff directly:
+\begin{equation}
+L_{\mathrm{total}}
+=
+L_{\mathrm{LM}}
++
+\lambda_{\mathrm{align}} L_{\mathrm{align}}
++
+\lambda_{\mathrm{stab}} L_{\mathrm{stab}}.
+\end{equation}
+Here $L_{\mathrm{LM}}$ is the original HyperSteer language-modeling loss, $L_{\mathrm{align}}$ penalizes degradation in instruction relevance or fluency, and $L_{\mathrm{stab}}$ penalizes excessive sensitivity to the steering factor.
+
+\subsection{Lookahead Shaping}
+
+There is no literal second agent in standard HyperSteer, so full opponent-shaping language should be used carefully. The right transfer is a lookahead term: updates should account for how improving concept steering now changes the best attainable instruction-following and fluency after factor selection. This yields the omega-inspired update
+\begin{equation}
+\phi_{t+1}
+=
+\phi_t
+-
+\eta_t \, w_t
+\Big(
+\nabla L_{\mathrm{LM}}
++
+\lambda \nabla L_{\mathrm{align}}
++
+\rho \nabla L_{\mathrm{lookahead}}
+\Big).
+\end{equation}
+This is the strongest version of the training story, but it is also the part that requires the most empirical care.
+
+\section{Formal Results}
+
+The strongest formal statements for this paper are not broad convergence theorems. They are targeted results about checkpoint collapse and risk-sensitive factor selection.
+
+\begin{theorem}[ESS floors prevent checkpoint collapse]
+Let $w_1,\dots,w_K$ be normalized checkpoint weights with $\sum_{k=1}^K w_k = 1$, and suppose
+\begin{equation}
+\ESS(w) = \frac{1}{\sum_{k=1}^K w_k^2} \ge B.
+\end{equation}
+Then
+\begin{equation}
+\max_k w_k \le \frac{1}{\sqrt{B}}.
+\end{equation}
+\end{theorem}
+
+\noindent\textit{Proof sketch.} Since $\sum_k w_k^2 \le 1/B$ and $\max_k w_k^2 \le \sum_k w_k^2$, the bound follows immediately.
+
+\begin{proposition}[Risk-sensitive factor selection trades mean for uncertainty]
+Let
+\begin{equation}
+a^* = \argmax_{a \in \mathcal{A}} \bigl(\mu(a) - \tau \sigma(a)\bigr).
+\end{equation}
+Then for every $a \in \mathcal{A}$,
+\begin{equation}
+\mu(a^*) \ge \mu(a) - \tau\bigl(\sigma(a)-\sigma(a^*)\bigr).
+\end{equation}
+\end{proposition}
+
+\noindent\textit{Interpretation.} Any mean-score loss of the chosen factor is controlled by the uncertainty reduction it buys. This formalizes why risk-sensitive factor selection is a better control rule than mean-only selection when factor robustness matters.
+
+\begin{proposition}[Posterior score variance is a steering diagnostic]
+For any factor $a$,
+\begin{equation}
+\Var_{\phi \sim q_T}[S(a,\phi)]
+=
+\E_{\phi}\!\left[\Var(S(a,\phi)\mid\phi)\right]
++
+\Var_{\phi}\!\left(\E[S(a,\phi)\mid\phi]\right).
+\end{equation}
+In Posterior HyperSteer, the second term is the practically important one: it measures sensitivity of benchmark performance to checkpoint choice.
+\end{proposition}
+
+HyperSteer currently has no direct analog of this quantity, which is exactly why posteriorization adds new control information rather than only a new average.
+
+\section{Experimental Program}
+
+\subsection{Main Comparison Set}
+
+The main comparison set should include:
+\begin{itemize}[leftmargin=1.5em]
+  \item HyperSteer as published;
+  \item HyperSteer under our local reproduction pipeline;
+  \item Posterior HyperSteer with `map`, `uniform`, `softmax`, `ess`, and `threshold`;
+  \item omega-style HyperSteer without posteriorization;
+  \item combined omega + posterior HyperSteer.
+\end{itemize}
+
+\subsection{Benchmarks}
+
+The primary benchmark should be AxBench Concept500 with held-out steering prompts \citep{wu2025axbench,sun2025hypersteer}. Secondary evaluations should include held-in AxBench runs, Concept10 smoke tests, and AlpacaEval transfer checks for the top methods.
+
+\subsection{Metrics}
+
+We should report all AxBench metrics:
+\begin{itemize}[leftmargin=1.5em]
+  \item steering composite score,
+  \item concept relevance,
+  \item instruction relevance,
+  \item fluency,
+  \item perplexity,
+  \item delta over unsteered baseline.
+\end{itemize}
+And add the posterior-specific diagnostics:
+\begin{itemize}[leftmargin=1.5em]
+  \item factor-robust AUC across steering factors,
+  \item posterior trace,
+  \item top-5 eigenvalues,
+  \item top-eigenvalue/trace ratio,
+  \item ESS,
+  \item max normalized checkpoint weight,
+  \item validation--test factor mismatch.
+\end{itemize}
+
+\subsection{Main Hypotheses}
+
+The core empirical hypotheses are:
+\begin{enumerate}[leftmargin=1.5em]
+  \item Posterior HyperSteer improves held-out robustness even if held-in mean score changes little.
+  \item Naive softmax weighting is more collapse-prone than `ess` and `threshold`.
+  \item Uncertainty-aware factor selection reduces oversteering.
+  \item Evidence and alignment weighting improve held-out transfer.
+  \item The combined method improves robustness without sacrificing all of HyperSteer’s concept-steering strength.
+\end{enumerate}
+
+\section{Why This Paper Is Strategically Strong}
+
+This paper is narrower than the broad Meta-SWAG draft, but that is a feature. It begins from a concrete incumbent SOTA method, it uses a benchmark that already exposes the right tradeoff, and it can succeed with a smaller number of crisp empirical results. Even a workshop paper would be compelling if it showed:
+\begin{itemize}[leftmargin=1.5em]
+  \item a clear robustness gain over HyperSteer,
+  \item a useful uncertainty-aware factor-selection result,
+  \item and one or two diagnostic plots that explain why the gain occurs.
+\end{itemize}
+
+The main risk is that the paper becomes benchmark-dependent. But that dependence is also what makes the story legible. If Posterior HyperSteer works, it becomes the cleanest flagship application of the broader Meta-SWAG program.
+
+\section{Conclusion}
+
+Focusing a parallel paper around HyperSteer is strategically attractive because it gives the Bayesian steering story a concrete home. HyperSteer is the object, Posterior HyperSteer is the method, and AxBench robustness is the test. The resulting contribution is much easier to explain than a broad theory-first unification paper, while still advancing the broader Meta-SWAG agenda. If successful, this paper would do more than improve a benchmark baseline. It would show that posterior uncertainty is not just a diagnostic for steering systems, but a useful control signal.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}
