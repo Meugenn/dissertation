@@ -21,6 +21,7 @@ rewriting the core metrics.
 - `experiments/universal_embedding/`: shared synthetic data generators and metrics
 - `experiments/run_synthetic_validation.py`: end-to-end sweep runner
 - `experiments/render_empirical_note.py`: render a LaTeX note from experiment summaries
+- `paper/universal_embedding_theorem_v3.tex`: full paper draft source copied into the repo
 - `paper/synthetic_validation_note.tex`: standalone LaTeX report entry point
 - `tests/test_synthetic_validation.py`: small regression tests for the math utilities
 
@@ -31,6 +32,7 @@ cd /Users/meuge/coding/maynard/ICML\ Sprint/universal-embedding-theorem
 python3 experiments/run_synthetic_validation.py --output-dir experiments/artifacts
 python3 experiments/render_empirical_note.py --artifacts-dir experiments/artifacts --output-tex paper/generated_results.tex
 cd paper && pdflatex synthetic_validation_note.tex
+cd paper && pdflatex universal_embedding_theorem_v3.tex
 python3 -m pytest tests/test_synthetic_validation.py
 ```
 
@@ -47,6 +49,7 @@ The runner writes:
 - `synthetic_validation_overview.png`
 - `paper/generated_results.tex`
 - `paper/synthetic_validation_note.pdf` after compilation
+- `paper/universal_embedding_theorem_v3.pdf` after compilation
 
 ## Notes
 

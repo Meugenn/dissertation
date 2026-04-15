@@ -28,14 +28,18 @@ paper's main loop:
 - `experiments/README.md`: experiment-specific usage notes
 - `experiments/matching_gfm/`: synthetic market, matching, metrics, and model code
 - `experiments/run_synthetic_matching.py`: end-to-end runner
+- `experiments/run_real_market_experiment.py`: real-data runner for Polymarket and local H&M
 - `experiments/render_empirical_note.py`: render LaTeX tables and a figure from run artifacts
 - `tests/test_matching_gfm.py`: small regression suite using `unittest`
+- `validation_datasets.md`: ranked survey of candidate validation datasets
 
 ## Run
 
 ```bash
 cd /Users/meuge/coding/maynard/ICML\ Sprint/matching-gfm-paper
 python3 experiments/run_synthetic_matching.py --output-dir experiments/artifacts
+python3 experiments/run_real_market_experiment.py --source polymarket --output-dir experiments/artifacts/polymarket_live
+python3 experiments/run_real_market_experiment.py --source hm_local --data-dir /path/to/hm --output-dir experiments/artifacts/hm_local
 python3 experiments/render_empirical_note.py --artifacts-dir experiments/artifacts/default_check
 cd paper && pdflatex main.tex && bibtex main && pdflatex main.tex && pdflatex main.tex
 cd paper && pdflatex empirical_validation_note.tex && bibtex empirical_validation_note && pdflatex empirical_validation_note.tex && pdflatex empirical_validation_note.tex
@@ -52,6 +56,17 @@ The runner writes:
 - `paper/generated_results.tex`: auto-rendered LaTeX tables and commentary
 - `paper/current_results.png`: auto-rendered summary figure
 
+## Real Data
+
+The scaffold now supports:
+
+- `polymarket`: live ingestion from the official Polymarket Gamma and Data APIs
+- `hm_local`: local H&M CSV ingestion from `customers.csv`, `articles.csv`, and `transactions_train.csv`
+
+For real data, evaluation focuses on held-out future interactions and predicted
+matching stability under the learned scores, since latent utilities are not
+directly observed.
+
 ## Notes
 
 - The current scaffold covers a synthetic preference-recovery setting, not the
@@ -61,5 +76,5 @@ The runner writes:
   a blocking-pair loss so we can test the paper's stability story early.
 - The next natural extensions are:
   - add static and temporal GNN baselines
-  - swap the synthetic generator for Polymarket slices
+  - strengthen the current Polymarket slice into a richer temporal graph dataset
   - add many-to-one and many-to-many matching variants

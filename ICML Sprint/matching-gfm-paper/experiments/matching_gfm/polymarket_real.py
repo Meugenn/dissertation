@@ -357,5 +357,7 @@ def load_polymarket_market(
         output_dir = Path(snapshot_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         market.write_snapshot(output_dir)
+        (output_dir / "raw_markets.json").write_text(json.dumps(snapshot.markets, indent=2))
+        (output_dir / "raw_trades.json").write_text(json.dumps(snapshot.trades, indent=2))
 
     return market

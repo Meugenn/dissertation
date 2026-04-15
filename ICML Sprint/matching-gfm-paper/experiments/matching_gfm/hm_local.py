@@ -45,6 +45,7 @@ def load_hm_local_market(
         usecols=["t_dat", "customer_id", "article_id", "price", "sales_channel_id"],
         nrows=max_rows,
     )
+    raw_transaction_count = len(transactions)
     transactions["t_dat"] = pd.to_datetime(transactions["t_dat"], utc=True)
     transactions = transactions.dropna(subset=["customer_id", "article_id", "t_dat"])
 
@@ -131,7 +132,7 @@ def load_hm_local_market(
     total_horizon = edges_with_time[-1][0]
 
     metadata = {
-        "raw_transactions": int(len(pd.read_csv(transactions_path, usecols=["customer_id"], nrows=max_rows))),
+        "raw_transactions": int(raw_transaction_count),
         "filtered_transactions": int(len(transactions)),
         "max_rows": max_rows,
     }
