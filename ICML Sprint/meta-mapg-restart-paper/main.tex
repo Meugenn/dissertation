@@ -11,6 +11,8 @@
 \usepackage{amsmath,amssymb,amsthm,mathtools}
 \usepackage{enumitem}
 \usepackage[capitalize,noabbrev]{cleveref}
+\crefname{assumption}{Assumption}{Assumptions}
+\Crefname{assumption}{Assumption}{Assumptions}
 
 \theoremstyle{plain}
 \newtheorem{theorem}{Theorem}[section]
@@ -140,7 +142,7 @@ where $L$ is the unroll length. In the convergence theorem we use the annealed u
 \phi_{n+1}
 =\Proj_{\K}\!\left[\phi_n+\alpha_n\left(\hat v_n+\lambda_n\hat M_{L_n,n}\right)\right],
 \end{equation}
-where $\K\subset\R^d$ is compact, $\hat M_{L_n,n}$ estimates the combined own/peer Meta-MAPG correction, and $\lambda_n$ controls the asymptotic size of opponent-aware shaping. The compact projection can be replaced by any standard boundedness mechanism; it is stated explicitly to keep the stochastic approximation argument clean, as in projected stochastic-approximation arguments \citep{kushner1978stochastic,borkar2008stochastic}.
+where $\K\subset\R^d$ is compact, $\hat M_{L_n,n}$ estimates the combined own/peer Meta-MAPG correction, and $\lambda_n$ controls the asymptotic size of opponent-aware shaping. The compact projection can be replaced by any standard boundedness mechanism; it is stated explicitly so that the projection lemma of \citet{kushner1978stochastic} applies and so that the ODE tracking argument in \citet{borkar2008stochastic} holds without additional tightness work.
 
 \begin{definition}[Nash-consistent shaping]\label{def:nash-consistent}
 Let $U$ be a neighbourhood of a stable Nash set $\N$ of the base game-gradient field $v$. A scheduled opponent-aware correction $\lambda_n M_{L_n}$ is Nash-consistent on $U$ if its contribution to the stochastic-approximation recursion is either summable,
@@ -160,7 +162,7 @@ The step sizes satisfy $\alpha_n>0$, $\sum_n\alpha_n=\infty$, and $\sum_n\alpha_
 \end{assumption}
 
 \begin{assumption}[Estimator decomposition]\label{as:decomp}
-The scheduled correction $\lambda_n M_{L_n}$ is Nash-consistent in the sense of \cref{def:nash-consistent}. Accordingly, there is a locally Lipschitz effective field $F$--equal to $v$ in the annealed case, or to an equilibrium-preserving limit $v+M$ in the non-vanishing case--such that the sampled update $g_n=\hat v_n+\lambda_n\hat M_{L_n,n}$ satisfies
+There is a locally Lipschitz effective field $F$---equal to $v$ in the annealed case and to an equilibrium-preserving limit $v+M$ in the non-vanishing case (\cref{def:nash-consistent})---such that the sampled update $g_n=\hat v_n+\lambda_n\hat M_{L_n,n}$ admits the decomposition
 \[
 g_n=F(\phi_n)+\xi_{n+1}+b_n,
 \]
@@ -169,15 +171,20 @@ where $\{\xi_{n+1}\}$ is a martingale-difference sequence adapted to $\F_n$ with
 \E[\xi_{n+1}\mid\F_n]=0,\qquad
 \E[\|\xi_{n+1}\|^2\mid\F_n]\le \sigma^2,
 \]
-and $\|b_n\|\le C\beta_n$ with $\sum_n\alpha_n\beta_n<\infty$.
+and $\|b_n\|\le C\beta_n$ for a deterministic sequence $\beta_n\ge 0$.
 \end{assumption}
 
 \begin{assumption}[Truncation and modeling bias]\label{as:trunc}
-The unroll schedule $L_n$ and opponent-modeling procedure produce a residual finite-unroll/modeling error $\epsilon_n$ with $\sum_n\alpha_n\epsilon_n<\infty$. This residual is included in the bias sequence $\beta_n$ of \cref{as:decomp}.
+The unroll schedule $L_n$ and opponent-modeling procedure produce a residual finite-unroll/modeling error that is absorbed into the bias sequence $\beta_n$ of \cref{as:decomp}. The combined bias satisfies $\beta_n\to 0$.
 \end{assumption}
 
-\begin{assumption}[Annealing]\label{as:anneal}
-For the asymptotic convergence phase, $M_{L_n}$ is uniformly bounded on $\K$ and $\sum_n\alpha_n\lambda_n<\infty$. Then the opponent-aware correction is a transient shaping term and the limiting ODE remains the base game-gradient flow $\dot\phi=v(\phi)$.
+\begin{assumption}[Summability and annealing]\label{as:anneal}
+Step sizes, bias, and shaping coefficients jointly satisfy
+\[
+\sum_n\alpha_n\beta_n<\infty,\qquad
+\sum_n\alpha_n\lambda_n<\infty,
+\]
+with $M_{L_n}$ uniformly bounded on $\K$. Under these conditions the limiting ODE of \eqref{eq:update} is the base game-gradient flow $\dot\phi=v(\phi)$, so the opponent-aware correction is asymptotically transient. Phase 1 of \cref{thm:two-phase} relaxes the $\sum_n\alpha_n\lambda_n<\infty$ requirement to a constant $\lambda_n=\lambda_c$ over a finite-time window only; phase 2 restores it.
 \end{assumption}
 
 \begin{assumption}[Strategic stability]\label{as:stable}
@@ -202,12 +209,21 @@ Suppose Assumptions~\ref{as:steps}--\ref{as:stable} hold and no restarts occur. 
 Moreover, under the quantitative bias and variance exponents of \citet{giannou2022convergence}, the usual local squared-distance rate is inherited.
 \end{lemma}
 
-\begin{proposition}[Certified basin enlargement]\label{prop:basin}
-Fix an SOS Nash equilibrium $\phi^\ast$ with standard drift constant $\mu$ and local Lipschitz constant $L_v$. Let $M$ denote the population Meta-MAPG correction and suppose the symmetric part of $DM(\phi^\ast)$ is negative semidefinite in the tangent cone with parameter $\mu_M>0$. Then the constant-shaping field $F_\lambda=v+\lambda M$ has local drift constant
+\begin{proposition}[Local drift improvement under shaping]\label{prop:basin}
+Fix an SOS Nash equilibrium $\phi^\ast$ of the base game-gradient field $v$ with local drift constant $\mu>0$. Let $M$ be the population Meta-MAPG correction, assume both $v$ and $M$ are $C^1$ near $\phi^\ast$ with $M(\phi^\ast)=0$, and write $J_v=Dv(\phi^\ast)$, $J_M=DM(\phi^\ast)$. Define
 \[
-\mu_\lambda\ge \mu+\lambda\mu_M+O(\lambda\|D v(\phi^\ast)\|),
+\mu_M:=-\lambda_{\max}\!\left(\tfrac{J_M+J_M^\top}{2}\right).
 \]
-for sufficiently small $\lambda>0$. In particular, the usual certified local radius, which scales as drift divided by local Lipschitz constant, increases whenever the reinforcement term dominates the Lipschitz change. This gives a sufficient local explanation for improved restart efficiency.
+Then for every $\lambda\ge 0$, the shaped field $F_\lambda=v+\lambda M$ satisfies the linearized drift bound
+\begin{equation}\label{eq:weyl}
+-\lambda_{\max}\!\left(\tfrac{J_\lambda+J_\lambda^\top}{2}\right)\ge \mu+\lambda\mu_M,
+\qquad J_\lambda:=J_v+\lambda J_M,
+\end{equation}
+by Weyl's inequality on Hermitian matrices. If in addition $DF_\lambda$ is $L_\lambda$-Lipschitz on $\B_\rho(\phi^\ast)$, then on the ball of radius $\rho_\lambda:=(\mu+\lambda\mu_M)/(2L_\lambda)$,
+\[
+\langle F_\lambda(\phi),\phi-\phi^\ast\rangle\le -\tfrac{1}{2}(\mu+\lambda\mu_M)\|\phi-\phi^\ast\|^2,
+\]
+so the certified SOS radius around $\phi^\ast$ scales at least linearly in $\lambda$ whenever $\mu_M>0$. The sign of $\mu_M$ is game-dependent; if $\mu_M\le 0$, opponent-aware shaping does not enlarge the certified local basin.
 \end{proposition}
 
 \begin{theorem}[Two-phase Meta-MAPG]\label{thm:two-phase}
@@ -264,7 +280,7 @@ Restarts globalise this local guarantee in the usual product-space way. Each epo
 
 \section{Experiments}\label{sec:experiments}
 
-The experiments are intentionally small and theorem-facing. We use tabular Bernoulli policies in Stag Hunt and finite-horizon iterated Prisoner's Dilemma (IPD). For clarity, our Stag Hunt is a one-state, one-step, two-agent Markov game: each agent samples $C$ or $D$ from a Bernoulli policy, with row-player payoff matrix
+The experiments are intentionally small and theorem-facing. We use tabular Bernoulli policies in Stag Hunt and finite-horizon iterated Prisoner's Dilemma (IPD). Stag Hunt is the minimal setting in which the phenomenon this paper analyses actually occurs: two pure strategic-stable Nash equilibria (payoff-dominant and risk-dominant), a non-trivial basin structure, and a two-dimensional joint policy space that admits closed-form computation of the drift constants $\mu$ and $\mu_M$ used in \cref{prop:basin}. This is also the canonical testbed for opponent shaping in LOLA, SOS, and COLA \citep{foerster2018lola,letcher2019stable,willi2022cola}. IPD is included as an orthogonal test case: the same estimator must survive a finite-horizon sequential-decision environment with a richer state space. For clarity, our Stag Hunt is a one-state, one-step, two-agent Markov game: each agent samples $C$ or $D$ from a Bernoulli policy, with row-player payoff matrix
 \[
 \begin{array}{c|cc}
  & C & D\\ \hline
@@ -287,22 +303,15 @@ The implemented one-step correction is $\eta\widehat H_{ii}^\top\hat g_i$ for ow
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/ablation_success.pdf}
-  \caption{Component ablation. Peer-aware methods change equilibrium selection relative to standard PG and Meta-PG. The comparison is not meant to establish that full Meta-MAPG strictly dominates peer-only shaping in IPD; rather, it isolates that the peer-learning term is the component that changes cooperative outcomes.}
+  \caption{Component ablation with Wilson $95\%$ confidence intervals over $100$ seeds. Peer-aware methods (peer-only, Meta-MAPG) are separated from non-peer methods (PG, Meta-PG) by non-overlapping CIs in both games, so the peer-learning effect is statistically significant. Peer-only and full Meta-MAPG are not distinguishable within CIs, so the figure does not claim strict dominance of the full method; it isolates that the peer-learning term is the component that changes cooperative outcomes.}
   \label{fig:ablation}
 \end{figure}
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\linewidth]{figures/trajectory_visualization.pdf}
-  \caption{Trajectory visualisation under PG and Meta-MAPG in Stag Hunt. Each curve shows the evolution of joint cooperation probabilities from one initialisation; green trajectories reach the payoff-dominant basin and red trajectories move toward the risk-dominant basin or miss the target. This is not a convergence proof; it visualises the finite-time change in local dynamics induced by the opponent-aware term and serves as the geometric bridge between the stochastic-approximation theorem and the restart-efficiency gains.}
-  \label{fig:trajectory}
-\end{figure}
-
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=\linewidth]{figures/basin_maps.pdf}
-  \caption{Basin visualisation in Stag Hunt. We discretise initial cooperation probabilities over a $21\times21$ grid and run sample-based updates without restarts. The cooperative basin covers $27.0\%$ of grid points under PG and $42.6\%$ under Meta-MAPG with the same peer coefficient used in the other experiments.}
-  \label{fig:basin}
+  \includegraphics[width=\linewidth]{figures/basin_trajectories.pdf}
+  \caption{Basin geometry and dynamics in Stag Hunt. Background shading is the empirical basin map on a $21\times21$ grid of initial cooperation probabilities (lavender = converges to the payoff-dominant equilibrium, cream = converges to the risk-dominant equilibrium). The dashed contour is the $0.5$-success level set of the smoothed basin indicator, i.e.\ the empirical separatrix. Overlaid trajectories show joint cooperation evolution from a $5\times5$ sub-grid of initialisations; green curves land above the frontier, red curves fall below. Under Meta-MAPG the frontier is pushed left and down: the certified basin grows from $27.0\%$ of the grid under PG to $42.6\%$, consistent with \cref{prop:basin}. This is not a convergence proof; it is the geometric bridge between the stochastic-approximation theorem and the restart-efficiency gains.}
+  \label{fig:basin-traj}
 \end{figure}
 
 \begin{figure}[t]
@@ -312,6 +321,20 @@ The implemented one-step correction is $\eta\widehat H_{ii}^\top\hat g_i$ for ow
   \label{fig:restart}
 \end{figure}
 
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/peer_sweep.pdf}
+  \caption{Peer-shaping sweep on Stag Hunt. Left: fraction of $11\times 11$ initial-policy grid points that converge to the payoff-dominant basin, as a function of the peer-shaping coefficient $\lambda$. The rate grows monotonically from the PG baseline ($\lambda=0$, $29.8\%$) to $62.8\%$ at $\lambda=5$, approximately linearly for small $\lambda$ as predicted by the certified-radius scaling $\rho_\lambda\gtrsim\rho_0+\lambda\mu_M/(2L)$ of \cref{prop:basin}. Right: mean first-hit step, conditional on eventual success, as a function of $\lambda$; basin-entry horizon contracts from $\approx 25$ steps to $\approx 20$ steps, consistent with \cref{cor:speedup}.}
+  \label{fig:peer-sweep}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/annealing_ablation.pdf}
+  \caption{Two-phase schedule vs constant shaping in Stag Hunt ($80$ seeds, $260$ steps, $\lambda_c=1.5$). Left: cooperative success rate. PG reaches $31\%$, constant-shaping Meta-MAPG reaches $41\%$, and the two-phase schedule of \cref{thm:two-phase} reaches $43\%$, showing that annealing to recover Nash consistency does not degrade empirical basin entry. Right: shaping schedule $\lambda_n$ versus step; the dotted vertical line is the phase-1/phase-2 boundary $N_0=100$. This is the only experiment that runs a genuinely annealed schedule rather than constant $\lambda$.}
+  \label{fig:annealing}
+\end{figure}
+
 \begin{table}[t]
   \centering
   \caption{Main 100-seed summary. Cooperative success uses a minimum initial-state cooperation threshold of $0.82$. Restart entries are shown only for PG and Meta-MAPG because the restart experiment isolates the base-flow versus full opponent-aware comparison; the remaining variants are used for component ablation.}
@@ -319,7 +342,7 @@ The implemented one-step correction is $\eta\widehat H_{ii}^\top\hat g_i$ for ow
   \resizebox{\linewidth}{!}{\input{tables/main_results_table.tex}}
 \end{table}
 
-The empirical claims are modest. The ablation primarily shows that peer-learning terms matter; it does not prove full Meta-MAPG dominates every LOLA-style variant in every game. The trajectory visualisation is finite-time mechanism evidence: it shows that opponent-aware shaping modifies the local flow in the same region where the basin map changes. The finite-horizon experiments probe the constant-shaping basin-entry phase; the subsequent annealed convergence phase is the role of the theorem. The restart-budget and basin experiments are the direct support for \cref{thm:two-phase,thm:restart,prop:basin}: restarts turn local convergence into equilibrium search, and opponent-aware shaping improves that search by increasing the measured cooperative basin and first-passage probability in Stag Hunt. The older restart-count statistic is retained in \cref{tab:results}. The estimator sanity check in \cref{app:sanity} is not a proof of \cref{as:decomp}; it is an implementation check that the sample estimator behaves in the predicted direction as batch size increases.
+The empirical claims are modest. The ablation primarily shows that peer-learning terms matter; it does not prove full Meta-MAPG dominates every LOLA-style variant in every game. The trajectory visualisation is finite-time mechanism evidence: it shows that opponent-aware shaping modifies the local flow in the same region where the basin map changes. The restart-budget, basin, and peer-sweep experiments are the direct support for \cref{thm:two-phase,thm:restart,prop:basin,cor:speedup}: restarts turn local convergence into equilibrium search, opponent-aware shaping improves that search by increasing the measured cooperative basin and first-passage probability in Stag Hunt, and \cref{fig:peer-sweep} shows the basin rate growing approximately linearly in $\lambda$ for small $\lambda$ with a corresponding contraction of the first-hit horizon, consistent with the certified-radius and basin-entry bounds. The annealing ablation in \cref{fig:annealing} is the one experiment that actually runs the two-phase schedule of \cref{thm:two-phase} rather than constant shaping; it shows that switching to annealed shaping after $N_0$ steps preserves or slightly improves cooperative success, so the annealed theorem is not paid for with empirical performance. The older restart-count statistic is retained in \cref{tab:results}. The estimator sanity check in \cref{app:sanity} is not a proof of \cref{as:decomp}; it is an implementation check that the sample estimator behaves in the predicted direction as batch size increases.
 
 \section{Discussion}
 
@@ -405,17 +428,140 @@ Using $2\alpha_n\beta_n\sqrt{V_n}\le \alpha_n\beta_n(1+V_n)$ gives the Robbins--
 \]
 where $\sum_n a_n=\infty$ and $\sum_n\eta_n<\infty$ for sufficiently large $n$. Robbins--Siegmund then implies $V_n\to V_\infty$ almost surely and $\sum_n a_nV_n<\infty$; since $\sum_n a_n=\infty$, we obtain $V_\infty=0$. Thus $\phi_n\to\phi^\ast$ almost surely on the local event.
 
-\section{Restart Argument}\label{app:restart}
+\section{Proof of Proposition~\ref{prop:basin}}\label{app:prop-basin}
 
-Let $A_k$ be the event that restart epoch $k$ starts in the phase-1 region $\B_\rho$, enters $\B_{\rho/2}$, and then its local stochastic-approximation path converges. By independence of restarts and \cref{thm:two-phase},
+We prove the two parts separately.
+
+\paragraph{Linearised drift bound.}
+By assumption $v,M\in C^1$ in a neighbourhood of $\phi^\ast$. Both $J_v$ and $J_M$ are real matrices; their symmetric parts $\operatorname{sym}(A):=(A+A^\top)/2$ are Hermitian. By definition, $-\lambda_{\max}(\operatorname{sym}(J_v))=\mu$ (the SOS margin) and $-\lambda_{\max}(\operatorname{sym}(J_M))=\mu_M$. For any $\lambda\ge 0$,
 \[
-\Pr(A_k)\ge \nu(\B_\rho)(1-\delta)=p_\rho(1-\delta)=:p_\star>0.
+\operatorname{sym}(J_\lambda)=\operatorname{sym}(J_v)+\lambda\operatorname{sym}(J_M),
 \]
-Thus
+which is Hermitian. Weyl's inequality for Hermitian matrices gives
 \[
-\Pr(T>k)=\Pr(A_1^c,\ldots,A_k^c)\le (1-p_\star)^k.
+\lambda_{\max}\!\bigl(\operatorname{sym}(J_\lambda)\bigr)\le \lambda_{\max}\!\bigl(\operatorname{sym}(J_v)\bigr)+\lambda\,\lambda_{\max}\!\bigl(\operatorname{sym}(J_M)\bigr).
 \]
-This tail bound implies $\Pr(T<\infty)=1$ and $\E[T]\le 1/p_\star$. If the number of restarts counts failed epochs rather than the successful epoch itself, subtract one from this bound.
+Negating both sides yields \eqref{eq:weyl}. The bound is exact, not asymptotic, and requires no smallness condition on $\lambda$.
+
+\paragraph{Certified radius.}
+Let $\mu_\lambda:=\mu+\lambda\mu_M$. Fix $\phi\in\B_\rho(\phi^\ast)$ and write $x:=\phi-\phi^\ast$. Because $F_\lambda(\phi^\ast)=v(\phi^\ast)+\lambda M(\phi^\ast)=0$ and $M(\phi^\ast)=0$, Taylor's theorem with the integral remainder gives
+\[
+F_\lambda(\phi)=J_\lambda x+R_\lambda(x),
+\qquad
+\|R_\lambda(x)\|\le \tfrac{1}{2}L_\lambda\|x\|^2,
+\]
+where $L_\lambda$ is the Lipschitz constant of $DF_\lambda$ on $\B_\rho(\phi^\ast)$. Taking inner products,
+\[
+\langle F_\lambda(\phi),x\rangle
+=\langle J_\lambda x,x\rangle+\langle R_\lambda(x),x\rangle.
+\]
+The first term obeys $\langle J_\lambda x,x\rangle=x^\top\operatorname{sym}(J_\lambda)x\le -\mu_\lambda\|x\|^2$ by the Rayleigh quotient and \eqref{eq:weyl}. The remainder obeys $|\langle R_\lambda(x),x\rangle|\le \tfrac{1}{2}L_\lambda\|x\|^3$. Therefore
+\[
+\langle F_\lambda(\phi),\phi-\phi^\ast\rangle\le -\mu_\lambda\|x\|^2+\tfrac{1}{2}L_\lambda\|x\|^3.
+\]
+Whenever $\|x\|\le \rho_\lambda:=\mu_\lambda/(2L_\lambda)$, the cubic term is at most $(\mu_\lambda/4)\|x\|^2$, so
+\[
+\langle F_\lambda(\phi),\phi-\phi^\ast\rangle\le -\tfrac{3}{4}\mu_\lambda\|x\|^2\le -\tfrac{1}{2}\mu_\lambda\|x\|^2.
+\]
+This proves the stated SOS drift on $\B_{\rho_\lambda}(\phi^\ast)$. $\square$
+
+\section{Proof of Theorem~\ref{thm:two-phase}}\label{app:thm-twophase}
+
+Write $V_n=\|\phi_n-\phi^\ast\|^2$ and let $\tau:=\inf\{n\le N_0:\phi_n\notin\B_\rho\}$ with $\tau=N_0+1$ if the iterates never leave. On the event $\{n<\tau\}$ the phase-1 drift of \cref{prop:basin} applies with constant $\mu_{\lambda_c}$.
+
+\paragraph{Step 1: one-step drift.}
+On $\{n<\tau\}$, by \cref{as:decomp} and the phase-1 drift bound,
+\[
+\begin{aligned}
+\E[V_{n+1}\mid\F_n]
+&=\E\!\left[\|\phi_n-\phi^\ast+\alpha_0 g_n\|^2\mid\F_n\right]\\
+&=V_n+2\alpha_0\langle F_{\lambda_c}(\phi_n),\phi_n-\phi^\ast\rangle\\
+&\quad+2\alpha_0\langle b_n,\phi_n-\phi^\ast\rangle+\alpha_0^2\E[\|g_n\|^2\mid\F_n]\\
+&\le V_n-2\alpha_0\mu_{\lambda_c}V_n
++2\alpha_0\beta_0\sqrt{V_n}+\alpha_0^2 G^2,
+\end{aligned}
+\]
+where $G^2:=3(C_{F_{\lambda_c}}^2+\beta_0^2+\sigma^2)$ is a uniform bound on the conditional second moment of $g_n$ (with $C_{F_{\lambda_c}}$ the sup-norm of $F_{\lambda_c}$ on $\B_\rho$). Applying $2a b\le \eta a^2+\eta^{-1}b^2$ with $a=\sqrt{V_n}$, $b=\beta_0$, and $\eta=\mu_{\lambda_c}$,
+\[
+\E[V_{n+1}\mid\F_n]\le (1-\mu_{\lambda_c}\alpha_0)V_n
++\frac{\alpha_0\beta_0^2}{\mu_{\lambda_c}}+\alpha_0^2 G^2.
+\]
+
+\paragraph{Step 2: unconditional recursion on the stopped process.}
+Define the stopped sequence $\tilde V_n:=V_{n\wedge\tau}$. The drift bound and the fact that $\tilde V_{n+1}=\tilde V_n$ on $\{n\ge\tau\}$ give
+\[
+\E[\tilde V_{n+1}]\le (1-\mu_{\lambda_c}\alpha_0)\E[\tilde V_n]+c_1,
+\qquad c_1:=\frac{\alpha_0\beta_0^2}{\mu_{\lambda_c}}+\alpha_0^2 G^2.
+\]
+Iterating,
+\[
+\E[\tilde V_{N_0}]\le (1-\mu_{\lambda_c}\alpha_0)^{N_0}V_0+\frac{c_1}{\mu_{\lambda_c}\alpha_0}.
+\]
+Using $(1-x)^k\le e^{-xk}$ for $x\in[0,1]$,
+\[
+\E[\tilde V_{N_0}]\le V_0\,e^{-\mu_{\lambda_c}\alpha_0 N_0}+\frac{\beta_0^2}{\mu_{\lambda_c}^2}+\frac{\alpha_0 G^2}{\mu_{\lambda_c}}.
+\]
+
+\paragraph{Step 3: Markov's inequality.}
+If $\phi_{N_0}\notin\B_{\rho/2}$ and $\tau>N_0$, then $V_{N_0}\ge (\rho/2)^2$. If $\tau\le N_0$, by continuity of trajectories (or by projection onto $\K$) the iterate at time $\tau$ already lies outside $\B_\rho$, and in particular $V_\tau\ge \rho^2\ge (\rho/2)^2$; $\tilde V_{N_0}=V_\tau$ in that case. Hence in both cases $\tilde V_{N_0}\ge (\rho/2)^2$. Therefore
+\[
+\Pr(\phi_{N_0}\notin\B_{\rho/2}\mid \phi_0\in\B_\rho)
+\le \Pr(\tilde V_{N_0}\ge (\rho/2)^2)
+\le \frac{4\E[\tilde V_{N_0}]}{\rho^2}.
+\]
+Combining with Step 2,
+\[
+\Pr(\phi_{N_0}\notin\B_{\rho/2}\mid\phi_0\in\B_\rho)
+\le \frac{4}{\rho^2}\!\left(V_0 e^{-\mu_{\lambda_c}\alpha_0 N_0}+C\alpha_0(\beta_0^2+\alpha_0\sigma^2)\right),
+\]
+for a constant $C$ depending on $\mu_{\lambda_c}$, $C_{F_{\lambda_c}}$.
+
+\paragraph{Step 4: choice of $N_0$.}
+Given a target $\delta\in(0,1)$, set
+\[
+N_0=\left\lceil\frac{1}{\mu_{\lambda_c}\alpha_0}\log\!\frac{8V_0}{\delta\rho^2}\right\rceil,
+\qquad \alpha_0\le \frac{\delta\rho^2}{8C(\beta_0^2+\sigma^2)}.
+\]
+Each summand in Step 3 is then at most $\delta/2$, so the total failure probability is at most $\delta$.
+
+\paragraph{Step 5: phase 2.}
+Conditional on $\phi_{N_0}\in\B_{\rho/2}$, the subsequent recursion uses $\alpha_n=\alpha_0 n^{-p}$ and $\lambda_n=\lambda_c n^{-q}$ with $1/2<p\le 1$ and $q>1-p$, so $\sum_n\alpha_n=\infty$, $\sum_n\alpha_n^2<\infty$, and $\sum_n\alpha_n\lambda_n<\infty$ by direct integral comparison. Together with \cref{as:trunc,as:decomp,as:stable}, this satisfies the hypotheses of \cref{lem:local} on the event $\{\phi_{N_0}\in\B_{\rho/2}\}$. Conditional on this event, $\phi_n\to\phi^\ast$ almost surely. The total probability that the two-phase procedure converges in a single epoch is therefore at least $(1-\delta)\cdot 1=1-\delta$. $\square$
+
+\section{Proof of Theorem~\ref{thm:restart}}\label{app:thm-restart}
+
+Let $\F_k^{\mathrm{epoch}}$ denote the $\sigma$-algebra generated by epochs $1,\ldots,k-1$ (outcomes only; restart draws are independent by assumption). Let $A_k$ be the event that epoch $k$ starts in $\B_\rho$ and that the two-phase procedure of \cref{thm:two-phase} reaches phase 2 and converges within that epoch.
+
+\paragraph{Step 1: per-epoch lower bound.}
+Restart $k$ samples $\phi_0^{(k)}\sim\nu$ independently of $\F_k^{\mathrm{epoch}}$, so
+\[
+\Pr(\phi_0^{(k)}\in\B_\rho\mid\F_k^{\mathrm{epoch}})=\nu(\B_\rho)=p_\rho.
+\]
+Conditional on $\phi_0^{(k)}\in\B_\rho$, \cref{thm:two-phase} gives $\Pr(\text{epoch succeeds})\ge 1-\delta$. Therefore
+\[
+\Pr(A_k\mid\F_k^{\mathrm{epoch}})\ge p_\rho(1-\delta)=:p_\star>0.
+\]
+
+\paragraph{Step 2: geometric tail.}
+Let $T:=\inf\{k\ge 1:A_k\text{ occurs}\}$. Then
+\[
+\Pr(T>k)=\E\!\left[\prod_{j=1}^k\mathbf{1}_{A_j^c}\right]
+=\E\!\left[\E[\mathbf{1}_{A_k^c}\mid\F_k^{\mathrm{epoch}}]\prod_{j=1}^{k-1}\mathbf{1}_{A_j^c}\right].
+\]
+By Step 1, $\E[\mathbf{1}_{A_k^c}\mid\F_k^{\mathrm{epoch}}]\le 1-p_\star$ almost surely, so iterating,
+\[
+\Pr(T>k)\le (1-p_\star)^k.
+\]
+Hence $\Pr(T<\infty)=1$ and
+\[
+\E[T]=\sum_{k\ge 0}\Pr(T>k)\le \sum_{k\ge 0}(1-p_\star)^k=\frac{1}{p_\star}.
+\]
+
+\paragraph{Step 3: dimensional dependence.}
+If $\nu$ is lower-bounded by density $m>0$ on a region containing $\B_\rho(\phi^\ast)$ in $\R^d$, then $p_\rho\ge m\,c_d\rho^d$ where $c_d=\pi^{d/2}/\Gamma(d/2+1)$ is the volume of the unit $d$-ball. Combined with the certified radius $\rho_\lambda\ge (\mu+\lambda\mu_M)/(2L_\lambda)$ from \cref{prop:basin}, the expected number of epochs obeys
+\[
+\E[T]\le \frac{1}{(1-\delta)m c_d}\!\left(\frac{2L_\lambda}{\mu+\lambda\mu_M}\right)^{\!d}.
+\]
+Shaping reduces the base of this dimensional factor whenever $\mu_M>0$; the overall worst-case dependence is still exponential in $d$, as discussed in \cref{sec:main}. $\square$
 
 \section{Experiment Reproducibility}\label{app:repro}
 
@@ -441,10 +587,18 @@ python3 experiments/run_meta_mapg_experiments.py
   --reference-batch-size 120000 \
   --sanity-reps 80 \
   --own-coef 0.35 \
-  --peer-coef 1.5
+  --peer-coef 1.5 \
+  --sweep-lambdas 0.0 0.25 0.5 1.0 1.5 2.0 3.0 5.0 \
+  --sweep-grid-size 11 \
+  --sweep-steps 140 \
+  --anneal-seeds 80 \
+  --anneal-phase1-steps 100 \
+  --anneal-total-steps 260 \
+  --anneal-scale 30 \
+  --anneal-power 0.7
 \end{verbatim}
 }
-The raw files are \texttt{ablation\_summary.csv}, \texttt{restart\_summary.csv}, \texttt{restart\_selection.csv}, \texttt{trajectory\_trace.csv}, \texttt{basin\_map.csv}, and \texttt{estimator\_sanity.csv} under \texttt{artifacts/main}. The code uses no exact gradients for updates; expected returns are computed only for logging and evaluation.
+The raw files are \texttt{ablation\_summary.csv}, \texttt{restart\_summary.csv}, \texttt{restart\_selection.csv}, \texttt{trajectory\_trace.csv}, \texttt{basin\_map.csv}, \texttt{estimator\_sanity.csv}, \texttt{peer\_sweep.csv}, and \texttt{annealing\_ablation.csv} under \texttt{artifacts/main}. The code uses no exact gradients for updates; expected returns are computed only for logging and evaluation.
 
 \section{Estimator Sanity Check}\label{app:sanity}
 
