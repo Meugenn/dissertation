@@ -565,40 +565,7 @@ Shaping reduces the base of this dimensional factor whenever $\mu_M>0$; the over
 
 \section{Experiment Reproducibility}\label{app:repro}
 
-All experiments can be regenerated with:
-{\scriptsize
-\begin{verbatim}
-python3 experiments/run_meta_mapg_experiments.py
-  --outdir artifacts/main \
-  --seeds 100 \
-  --steps 260 \
-  --restart-steps 120 \
-  --max-restarts 12 \
-  --selection-budget 12 \
-  --selection-seeds 100 \
-  --selection-steps 120 \
-  --trajectory-steps 140 \
-  --trajectory-batch-size 384 \
-  --trajectory-grid-size 5 \
-  --batch-size 384 \
-  --basin-batch-size 192 \
-  --grid-size 21 \
-  --basin-steps 140 \
-  --reference-batch-size 120000 \
-  --sanity-reps 80 \
-  --own-coef 0.35 \
-  --peer-coef 1.5 \
-  --sweep-lambdas 0.0 0.25 0.5 1.0 1.5 2.0 3.0 5.0 \
-  --sweep-grid-size 11 \
-  --sweep-steps 140 \
-  --anneal-seeds 80 \
-  --anneal-phase1-steps 100 \
-  --anneal-total-steps 260 \
-  --anneal-scale 30 \
-  --anneal-power 0.7
-\end{verbatim}
-}
-The raw files are \texttt{ablation\_summary.csv}, \texttt{restart\_summary.csv}, \texttt{restart\_selection.csv}, \texttt{trajectory\_trace.csv}, \texttt{basin\_map.csv}, \texttt{estimator\_sanity.csv}, \texttt{peer\_sweep.csv}, and \texttt{annealing\_ablation.csv} under \texttt{artifacts/main}. The code uses no exact gradients for updates; expected returns are computed only for logging and evaluation.
+Code, scripts, and plotting utilities for the experiments are available at \url{https://github.com/guernicastars/icml26_drafts}. The generated artifacts used in this paper are written under \texttt{artifacts/main}, including \texttt{ablation\_summary.csv}, \texttt{restart\_summary.csv}, \texttt{restart\_selection.csv}, \texttt{trajectory\_trace.csv}, \texttt{basin\_map.csv}, \texttt{estimator\_sanity.csv}, \texttt{peer\_sweep.csv}, and \texttt{annealing\_ablation.csv}. The implementation does not use exact gradients for learning updates; expected returns are computed only for logging and evaluation.
 
 \section{Estimator Sanity Check}\label{app:sanity}
 
