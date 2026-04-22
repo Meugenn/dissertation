@@ -1,0 +1,325 @@
+\documentclass{article}
+
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+% Anonymous workshop format by default.
+\usepackage{icml2026}
+
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{enumitem}
+\usepackage[capitalize,noabbrev]{cleveref}
+
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{assumption}{Assumption}
+\newtheorem{definition}[theorem]{Definition}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\K}{\mathcal{K}}
+\newcommand{\B}{\mathcal{B}}
+\newcommand{\N}{\mathcal{N}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\dist}{\operatorname{dist}}
+\newcommand{\Proj}{\operatorname{Proj}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\diag}{\operatorname{diag}}
+
+\icmltitlerunning{Meta-MAPG as Stochastic Approximation}
+
+\begin{document}
+
+\twocolumn[
+\icmltitle{Opponent-Aware Policy Gradient as Stochastic Approximation: Local Meta-MAPG Convergence and Restart Globalisation}
+
+\begin{icmlauthorlist}
+\icmlauthor{Anonymous Author}{anon}
+\end{icmlauthorlist}
+
+\icmlaffiliation{anon}{Anonymous Institution}
+\icmlcorrespondingauthor{Anonymous Author}{anonymous@icml.cc}
+\icmlkeywords{multi-agent reinforcement learning, stochastic games, policy gradient, opponent shaping}
+
+\vskip 0.3in
+]
+
+\printAffiliationsAndNotice{}
+
+\begin{abstract}
+Policy-gradient methods in general stochastic games admit local convergence guarantees near stable Nash policies, but these guarantees are usually stated for independent policy-gradient fields that do not anticipate opponent learning. Opponent-aware methods such as LOLA and Meta-MAPG add terms that differentiate through the future learning of other agents, and empirically alter both adaptation and equilibrium selection. This paper gives a stochastic-approximation account of this mechanism. We show that finite-unroll Meta-MAPG estimators decompose into a Nash-consistent mean field, a martingale-difference noise term, and a summable truncation/modeling bias. Consequently, Giannou et al.'s local convergence theorem applies to annealed Meta-MAPG near strategically stable Nash equilibria. We then add a restart mechanism: if reinitialisations have positive probability of landing in the local basin, the number of failed epochs is geometrically bounded and the restarted process converges almost surely after finitely many restarts. Small tabular experiments support the proof obligations: peer-learning terms change equilibrium selection, restarts are more efficient under Meta-MAPG than under PG, basin maps expand under opponent-aware shaping, and estimator variance decreases with batch size.
+\end{abstract}
+
+\section{Introduction}
+
+Learning in stochastic games is hard because each learner faces both an evolving environment and other learners whose policies change in response to the same data. Recent work by \citet{giannou2022convergence} showed that policy-gradient methods converge locally to stable Nash policies in general stochastic games under strategic stability and second-order sufficiency conditions. This result is a strong baseline, but the update it analyses treats opponent learning as part of the background stochastic process rather than as an object to be shaped.
+
+Opponent-aware policy gradients address this missing dependence. LOLA differentiates through an opponent's anticipated update \citep{foerster2018lola,letcher2019stable}. Meta-MAPG derives a meta-policy-gradient theorem with three terms: the current-policy gradient, an own-learning gradient, and a peer-learning gradient that captures how the agent's current behaviour changes the future policies of other agents \citep{kim2021meta}. These terms matter empirically, but the convergence status of the resulting stochastic process is less clear than for standard PG.
+
+We show that this gap can be closed locally. Our first contribution is an estimator decomposition: under bounded rewards, smooth policies, controlled unroll length, and standard sampling assumptions, the Meta-MAPG update is a stochastic approximation to a Nash-consistent opponent-aware vector field. The own- and peer-learning terms enter as either part of the mean field or as a summable annealed perturbation, while sampling error remains a martingale difference with bounded conditional second moment.
+
+Our second contribution is a restart globalisation of the local theorem. Local convergence cannot become unconditional without information about the basin of attraction; even normal-form games can contain cycles and multiple attractors. However, if restarts draw from a full-support distribution on a compact policy-parameter set, every epoch has a fixed positive probability of starting in the local basin. This gives an almost-sure finite-restart guarantee and an explicit expected restart bound. Experiments in Stag Hunt and iterated Prisoner's Dilemma then test the precise claims the theorem uses: component ablations, restart efficiency, basin volume, and estimator variance.
+
+\section{Setup}\label{sec:setup}
+
+\subsection{Stochastic Games}
+
+We consider finite discounted stochastic games
+\[
+\mathcal{G}=(N,\mathcal{S},\{\mathcal{A}_i\}_{i\in N},P,\{r_i\}_{i\in N},\rho,\gamma_{\mathrm{disc}}),
+\]
+with finite state space $\mathcal{S}$, finite action sets $\mathcal{A}_i$, transition kernel $P$, bounded rewards $|r_i|\le R_{\max}$, initial-state distribution $\rho$, and discount factor $\gamma_{\mathrm{disc}}\in[0,1)$. Each agent has a differentiable stationary Markov policy $\pi_{\phi_i}(a_i\mid s)$ with parameter $\phi_i\in\R^{d_i}$; the joint parameter is $\phi=(\phi_i)_{i=1}^N\in\R^d$. The value of agent $i$ is
+\[
+J_i(\phi)=\E_{\rho,\pi_\phi}\!\left[\sum_{t\ge 0}\gamma_{\mathrm{disc}}^t r_i(s_t,a_t)\right],
+\]
+and the standard game-gradient field is
+\[
+v(\phi)=\bigl(\nabla_{\phi_i}J_i(\phi)\bigr)_{i=1}^N.
+\]
+First-order stationary points of this field correspond to Nash policies under the gradient-dominance property used by \citet{giannou2022convergence}; finite stochastic games possess stationary Nash equilibria \citep{fink1964equilibrium}.
+
+\begin{definition}[Stable Nash and SOS]\label{def:sos}
+A Nash parameter $\phi^\ast$ is stable if
+\[
+\langle v(\phi),\phi-\phi^\ast\rangle <0
+\]
+for all $\phi\ne\phi^\ast$ sufficiently close to $\phi^\ast$. It is second-order stationary (SOS) if there exist $\mu>0$ and $\rho>0$ such that
+\[
+\langle v(\phi),\phi-\phi^\ast\rangle\le -\mu\|\phi-\phi^\ast\|^2
+\]
+whenever $\|\phi-\phi^\ast\|\le\rho$.
+\end{definition}
+
+The SOS condition is the quantitative stability condition that yields an attracting neighbourhood and a rate in \citet{giannou2022convergence}. We use it as the local anchor.
+
+\subsection{Meta-MAPG Field}
+
+Meta-MAPG views learning as a Markov chain of joint policy parameters $\phi_0,\ldots,\phi_L$, where each inner transition is produced by a policy-gradient update. For agent $i$, \citet{kim2021meta} decompose the meta-gradient into
+\[
+G_i^{\mathrm{MAPG}}
+=G_i^{\mathrm{cur}}+G_i^{\mathrm{own}}+G_i^{\mathrm{peer}}.
+\]
+The current term is the usual policy-gradient score term. The own-learning term differentiates through how $\phi_i^0$ affects agent $i$'s adapted parameters $\phi_i^{1:L}$. The peer-learning term differentiates through how $\phi_i^0$ affects other agents' future parameters $\phi_{-i}^{1:L}$. The peer term is the Meta-MAPG analogue of LOLA-style opponent shaping; the own term is absent from pure LOLA.
+
+We write the population opponent-aware field as
+\[
+F_L(\phi)=v(\phi)+M_L^{\mathrm{own}}(\phi)+M_L^{\mathrm{peer}}(\phi),
+\]
+where $L$ is the unroll length. In the convergence theorem we use the annealed update
+\begin{equation}\label{eq:update}
+\phi_{n+1}
+=\Proj_{\K}\!\left[\phi_n+\alpha_n\left(\hat v_n+\lambda_n\hat M_{L_n,n}\right)\right],
+\end{equation}
+where $\K\subset\R^d$ is compact, $\hat M_{L_n,n}$ estimates the combined own/peer Meta-MAPG correction, and $\lambda_n$ controls the asymptotic size of opponent-aware shaping. The compact projection can be replaced by any standard boundedness mechanism; it is stated explicitly to keep the stochastic approximation argument clean.
+
+\section{Assumptions}\label{sec:assumptions}
+
+The assumptions separate inherited stochastic-approximation conditions from the new Meta-MAPG estimator requirement.
+
+\begin{assumption}[Step sizes and bounded iterates]\label{as:steps}
+The step sizes satisfy $\alpha_n>0$, $\sum_n\alpha_n=\infty$, and $\sum_n\alpha_n^2<\infty$. Iterates remain in a compact set $\K$, either by projection in \eqref{eq:update} or by an equivalent stability mechanism.
+\end{assumption}
+
+\begin{assumption}[Meta-MAPG estimator decomposition]\label{as:decomp}
+There is a locally Lipschitz Nash-consistent field $F(\phi)=v(\phi)+M(\phi)$ such that the sampled update $g_n=\hat v_n+\lambda_n\hat M_{L_n,n}$ satisfies
+\[
+g_n=F(\phi_n)+\xi_{n+1}+b_n,
+\]
+where $\{\xi_{n+1}\}$ is a martingale-difference sequence adapted to $\F_n$ with
+\[
+\E[\xi_{n+1}\mid\F_n]=0,\qquad
+\E[\|\xi_{n+1}\|^2\mid\F_n]\le \sigma^2,
+\]
+and $\|b_n\|\le C\beta_n$ with $\sum_n\alpha_n\beta_n<\infty$.
+\end{assumption}
+
+\begin{assumption}[Annealing and truncation]\label{as:trunc}
+The unroll schedule $L_n$ and shaping schedule $\lambda_n$ are chosen so that finite-unroll bias, opponent-modeling error, and annealed shaping error are absorbed into the summable sequence $\beta_n$ of \cref{as:decomp}. A sufficient condition is $\sum_n\alpha_n\lambda_n<\infty$ when $M$ is treated as an asymptotically vanishing perturbation of $v$.
+\end{assumption}
+
+\begin{assumption}[Strategic stability]\label{as:stable}
+The stable set $\N$ consists of isolated SOS Nash equilibria satisfying \cref{def:sos}. In the non-annealed local geometry statement, the shaped field $F=v+\lambda M$ satisfies the analogous SOS condition around the same equilibrium.
+\end{assumption}
+
+\begin{remark}
+The phrase ``Nash-consistent'' is doing real work. Meta-objectives can have fixed points that differ from Nash equilibria if shaping is kept constant and allowed to dominate the original game. The convergence theorem below is for annealed or equilibrium-preserving shaping. Constant shaping is used for the finite-time basin geometry in \cref{prop:basin}, not for the asymptotic Nash convergence claim.
+\end{remark}
+
+\section{Main Result}\label{sec:main}
+
+\begin{lemma}[Estimator decomposition and noise control]\label{lem:decomp}
+Under bounded rewards, twice differentiable policies with bounded score and Hessian on $\K$, and finite second moments of the likelihood-ratio estimators, the finite-unroll Meta-MAPG estimator satisfies \cref{as:decomp}. In particular, the current-policy, own-learning, and peer-learning components can each be written as a conditional mean plus a martingale-difference error; finite unroll and opponent-modeling truncation contribute the bias $b_n$.
+\end{lemma}
+
+\begin{lemma}[Local Meta-MAPG convergence]\label{lem:local}
+Suppose Assumptions~\ref{as:steps}--\ref{as:stable} hold and no restarts occur. If $\phi_0$ lies in the attracting neighbourhood of an SOS Nash equilibrium $\phi^\ast\in\N$, then
+\[
+\phi_n\to\phi^\ast\qquad\text{almost surely.}
+\]
+Moreover, under the quantitative bias and variance exponents of \citet{giannou2022convergence}, the usual local squared-distance rate is inherited.
+\end{lemma}
+
+\begin{theorem}[Restarted Meta-MAPG convergence]\label{thm:restart}
+Let $\{\phi_n\}$ be generated by \eqref{eq:update} in independent restart epochs. Assume Assumptions~\ref{as:steps}--\ref{as:stable}. Let $\B\subset\K$ be the union of local attracting neighbourhoods furnished by \cref{lem:local}, and let the restart distribution $\nu$ satisfy
+\[
+p_\B:=\nu(\B)>0.
+\]
+If each epoch is independent and the local convergence theorem succeeds with conditional probability at least $1-\delta$ on $\B$, then the restarted process enters a successful epoch after finitely many restarts almost surely. If $T$ is the index of the first successful epoch, then
+\[
+\Pr(T>k)\le (1-p_\B(1-\delta))^k,\qquad
+\E[T]\le \frac{1}{p_\B(1-\delta)}.
+\]
+Consequently, after a finite random number of restarts, the process converges almost surely to a stable Nash equilibrium in $\N$.
+\end{theorem}
+
+\begin{proposition}[Certified basin enlargement]\label{prop:basin}
+Fix an SOS Nash equilibrium $\phi^\ast$ with standard drift constant $\mu$ and local Lipschitz constant $L_v$. Let $M$ denote the population Meta-MAPG correction and suppose the symmetric part of $DM(\phi^\ast)$ is negative semidefinite in the tangent cone with parameter $\mu_M>0$. Then the constant-shaping field $F_\lambda=v+\lambda M$ has local drift constant
+\[
+\mu_\lambda\ge \mu+\lambda\mu_M+O(\lambda\|D v(\phi^\ast)\|),
+\]
+for sufficiently small $\lambda>0$. In particular, the usual certified local radius, which scales as drift divided by local Lipschitz constant, increases whenever the reinforcement term dominates the Lipschitz change. This gives a sufficient local explanation for improved restart efficiency.
+\end{proposition}
+
+\section{Proof Sketch}\label{sec:proof}
+
+The proof has five steps. The first is the only step specific to Meta-MAPG. Using the Meta-MAPG theorem of \citet{kim2021meta}, the sampled gradient is split into current, own-learning, and peer-learning score-function terms. Under bounded rewards and bounded policy scores, each sample term has finite conditional variance; subtracting its conditional mean yields a martingale difference. Truncating the unroll at $L_n$ and using an approximate opponent model introduce a bias $b_n$, controlled by the schedule in \cref{as:trunc}.
+
+Second, the bias and variance terms are checked against the stochastic-approximation conditions. Because $\sum_n\alpha_n^2<\infty$, the square-integrable martingale noise is summable in the Robbins--Siegmund sense \citep{robbins1951stochastic,robbins1971convergence,hall1980martingale}. Because $\sum_n\alpha_n\beta_n<\infty$, the deterministic truncation bias is also summable.
+
+Third, the Meta-MAPG update is mapped to Giannou et al.'s local PG template. In the annealed regime, the limiting field is Nash-consistent: stationary points in the local neighbourhood are the same stable Nash policies as in the base game-gradient field. The local Lyapunov recursion is therefore the same one used by \citet{giannou2022convergence}, with extra summable forcing terms.
+
+Fourth, \cref{lem:local} follows by invoking the local attraction theorem for stable and SOS Nash policies. The proof does not require global monotonicity of the game; it is conditioned on the local basin, exactly as in the original theorem.
+
+Fifth, restarts globalise this local guarantee in the usual product-space way. Each epoch is independent. Since the restart distribution assigns mass $p_\B$ to the attracting set and the local theorem succeeds with probability at least $1-\delta$, each epoch succeeds with probability at least $p_\B(1-\delta)$. The first successful epoch is dominated by a geometric random variable, which proves \cref{thm:restart}. The empirical basin maps in \cref{sec:experiments} illustrate why opponent-aware shaping can improve the constant in this bound by increasing $p_\B$.
+
+\section{Experiments}\label{sec:experiments}
+
+The experiments are intentionally small and theorem-facing. We use tabular Bernoulli policies in Stag Hunt and finite-horizon iterated Prisoner's Dilemma (IPD). Updates are sample-based: for a trajectory score $s_i=\nabla_{\phi_i}\log p_\phi(\tau)$ and return $R_i$, the base estimator is $\hat g_i=\frac{1}{B}\sum_b R_i^{(b)}s_i^{(b)}$. The own-learning term uses the likelihood-ratio Hessian estimator
+\[
+\widehat H_{ii}=\frac{1}{B}\sum_b R_i^{(b)}\left(s_i^{(b)}s_i^{(b)\top}+\nabla_{\phi_i}^2\log p_\phi(\tau^{(b)})\right),
+\]
+and the peer-learning term uses the cross-score estimator
+\[
+\widehat C_{ji}=\frac{1}{B}\sum_b R_j^{(b)}s_j^{(b)}s_i^{(b)\top}.
+\]
+The implemented one-step correction is $\eta\widehat H_{ii}^\top\hat g_i$ for own learning and $\eta\widehat C_{ji}^\top\widehat{\nabla_{\phi_j}J_i}$ for peer learning. We compare standard PG, Meta-PG (no peer term), peer-only LOLA-style shaping (no own term), and full Meta-MAPG. Each reported experiment uses 20 random seeds; run configuration and raw CSVs are in the experiment artifact directory.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/ablation_success.pdf}
+  \caption{Component ablation. Peer-aware methods change equilibrium selection relative to standard PG and Meta-PG. In the 20-seed run, IPD cooperative convergence is $0\%$ for PG/Meta-PG, $35\%$ for peer-only, and $30\%$ for full Meta-MAPG; full Meta-MAPG has the highest mean IPD return among the four methods.}
+  \label{fig:ablation}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/restart_efficiency.pdf}
+  \caption{Restart efficiency. With the same restart budget and threshold, Meta-MAPG requires fewer restarts than PG. In IPD, Meta-MAPG succeeds in $85\%$ of runs with mean $5.30$ restarts, while PG succeeds in $30\%$ with mean $10.70$ restarts. In Stag Hunt, both succeed in all runs, but Meta-MAPG reduces mean restarts from $1.65$ to $1.00$.}
+  \label{fig:restart}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/basin_maps.pdf}
+  \caption{Basin visualisation in Stag Hunt. We discretise initial cooperation probabilities over a $21\times21$ grid and run sample-based updates without restarts. The cooperative basin covers $27.0\%$ of grid points under PG and $47.4\%$ under Meta-MAPG.}
+  \label{fig:basin}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.78\linewidth]{figures/estimator_sanity.pdf}
+  \caption{Estimator sanity check. At a fixed Stag Hunt parameter, the variance trace of the Meta-MAPG estimator decreases from $0.1272$ at batch size $48$ to $0.0062$ at batch size $768$. Bias is measured relative to a high-batch reference estimator, not an exact analytic gradient.}
+  \label{fig:sanity}
+\end{figure}
+
+\begin{table}[t]
+  \centering
+  \caption{Main 20-seed summary. Cooperative success uses a minimum initial-state cooperation threshold of $0.82$. Restart entries are shown only for PG and Meta-MAPG, the two methods used in the restart experiment.}
+  \label{tab:results}
+  \resizebox{\linewidth}{!}{\input{tables/main_results_table.tex}}
+\end{table}
+
+The empirical claims are modest. The ablation primarily shows that peer-learning terms matter; it does not prove full Meta-MAPG dominates every LOLA-style variant in every game. The restart and basin experiments are the direct support for \cref{thm:restart,prop:basin}: opponent-aware shaping increases the measured basin in Stag Hunt and reduces the observed restart count under the same reinitialisation procedure. The estimator sanity check supports \cref{lem:decomp} by verifying that the implemented sample estimator has controlled variance as batch size increases.
+
+\section{Discussion}
+
+The result is local before it is global. Meta-MAPG inherits Giannou et al.'s stable-Nash theory only inside attracting neighbourhoods and only after the estimator has been placed in the stochastic-approximation form. Restarts remove dependence on a particular initialisation, but they do not identify the best equilibrium without an additional selection rule. Their expected complexity depends on the basin probability $p_\B$; opponent-aware shaping helps only when it increases this probability.
+
+The assumptions are also substantive. The Meta-MAPG estimator must have bounded conditional variance, truncation schedules must make unroll bias summable, and asymptotic shaping must be Nash-consistent. Constant shaping is useful for basin geometry and finite-time behaviour, but a constant peer term can move the limiting fixed points in general-sum games. This is why the theorem separates annealed convergence from constant-shaping basin diagnostics.
+
+The experiments are illustrative rather than definitive. They use matrix and tabular stochastic games because those are the environments in which the theorem's objects can be measured cleanly. Scaling the same decomposition to deep MARL requires better variance control, opponent modeling, and automatic differentiation through longer unrolls, for example with DiCE-style estimators \citep{foerster2018dice}. The conceptual message is narrower and, we think, useful: opponent-aware gradients can be analysed as stochastic approximation processes, and restart efficiency is the right global metric when the underlying convergence theorem is local.
+
+\appendix
+
+\section{Detailed Estimator Decomposition}\label{app:decomp}
+
+For a sampled trajectory $\tau$, write $S_i(\tau)=\nabla_{\phi_i}\log p_\phi(\tau)$ and $H_i(\tau)=\nabla_{\phi_i}^2\log p_\phi(\tau)$. The base likelihood-ratio estimator is $R_i(\tau)S_i(\tau)$ \citep{williams1992simple,sutton2018reinforcement}. The one-step own-learning derivative follows from differentiating $J_i(\phi_i+\eta\nabla_{\phi_i}J_i,\phi_{-i})$:
+\[
+\nabla_{\phi_i}J_i+\eta\left[\nabla_{\phi_i}^2J_i\right]^\top\nabla_{\phi_i}J_i.
+\]
+The Hessian identity gives
+\[
+\nabla_{\phi_i}^2J_i
+=\E\left[R_i(\tau)\left(S_i(\tau)S_i(\tau)^\top+H_i(\tau)\right)\right],
+\]
+which is the estimator used in the experiments.
+
+For the peer term, let agent $j$ take one inner step $\phi_j'=\phi_j+\eta\nabla_{\phi_j}J_j$. Differentiating $J_i(\phi_i,\phi_j')$ with respect to $\phi_i$ contributes
+\[
+\eta\left[\nabla_{\phi_i}\nabla_{\phi_j}J_j\right]^\top\nabla_{\phi_j}J_i.
+\]
+The mixed likelihood-ratio identity gives
+\[
+\nabla_{\phi_i}\nabla_{\phi_j}J_j
+=\E\left[R_j(\tau)S_j(\tau)S_i(\tau)^\top\right],
+\]
+which is the sample cross-score matrix used for the peer correction. Longer Meta-MAPG unrolls repeat this chain-rule structure across $L$ inner updates; bounded derivatives on $\K$ allow the omitted tail and finite-modeling error to be collected in $b_n$.
+
+\section{Restart Argument}\label{app:restart}
+
+Let $A_k$ be the event that restart epoch $k$ starts in $\B$ and its local stochastic approximation path converges. By independence of restarts,
+\[
+\Pr(A_k)\ge \nu(\B)(1-\delta)=p_\B(1-\delta)=:p_\star>0.
+\]
+Thus
+\[
+\Pr(T>k)=\Pr(A_1^c,\ldots,A_k^c)\le (1-p_\star)^k.
+\]
+This tail bound implies $\Pr(T<\infty)=1$ and $\E[T]\le 1/p_\star$. If the number of restarts counts failed epochs rather than the successful epoch itself, subtract one from this bound.
+
+\section{Experiment Reproducibility}\label{app:repro}
+
+All experiments can be regenerated with:
+{\scriptsize
+\begin{verbatim}
+python3 experiments/run_meta_mapg_experiments.py
+  --outdir artifacts/main \
+  --seeds 20 \
+  --steps 260 \
+  --restart-steps 120 \
+  --max-restarts 12 \
+  --batch-size 256 \
+  --basin-batch-size 128 \
+  --grid-size 21 \
+  --basin-steps 120 \
+  --reference-batch-size 120000 \
+  --sanity-reps 80 \
+  --own-coef 0.05 \
+  --peer-coef 1.5 \
+  --basin-peer-coef 2.0
+\end{verbatim}
+}
+The raw files are \texttt{ablation\_summary.csv}, \texttt{restart\_summary.csv}, \texttt{basin\_map.csv}, and \texttt{estimator\_sanity.csv} under \texttt{artifacts/main}. The code uses no exact gradients for updates; expected returns are computed only for logging and evaluation.
+
+\bibliography{references}
+\bibliographystyle{icml2026}
+
+\end{document}

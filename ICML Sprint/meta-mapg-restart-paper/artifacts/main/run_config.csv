@@ -1,0 +1,23 @@
+key,value
+basin_batch_size,128
+basin_peer_coef,2.0
+basin_steps,120
+batch_size,256
+grid_size,21
+inner_lr,0.55
+lambda_power,0.0
+lr,0.9
+lr_power,0.24
+max_restarts,12
+outdir,artifacts/main
+own_coef,0.05
+peer_coef,1.5
+reference_batch_size,120000
+restart_steps,120
+sanity_batches,"[48, 96, 192, 384, 768]"
+sanity_reps,80
+seeds,20
+skip_basin,False
+skip_sanity,False
+steps,260
+success_threshold,0.82
