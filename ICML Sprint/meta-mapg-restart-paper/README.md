@@ -1,0 +1,43 @@
+# Meta-MAPG Restart Paper
+
+This folder contains a fresh ICML-style workshop draft for the Meta-MAPG two-phase convergence and restart-globalisation thesis.
+
+Canonical files:
+
+- `main.tex`: LaTeX source for the paper.
+- `main.pdf`: compiled PDF.
+- `references.bib`: bibliography.
+- `experiments/run_meta_mapg_experiments.py`: sample-based tabular experiments.
+- `artifacts/main/`: experiment outputs used in the paper.
+- `figures/` and `tables/`: paper-ready copies of the generated figures and summary table.
+
+Regenerate the experiments from this directory with:
+
+```bash
+python3 experiments/run_meta_mapg_experiments.py \
+  --outdir artifacts/main \
+  --seeds 100 \
+  --steps 260 \
+  --restart-steps 120 \
+  --max-restarts 12 \
+  --selection-budget 12 \
+  --selection-seeds 100 \
+  --selection-steps 120 \
+  --trajectory-steps 140 \
+  --trajectory-batch-size 384 \
+  --trajectory-grid-size 5 \
+  --batch-size 384 \
+  --basin-batch-size 192 \
+  --grid-size 21 \
+  --basin-steps 140 \
+  --reference-batch-size 120000 \
+  --sanity-reps 80 \
+  --own-coef 0.35 \
+  --peer-coef 1.5
+```
+
+Recompile the paper with:
+
+```bash
+latexmk -pdf -interaction=nonstopmode main.tex
+```
