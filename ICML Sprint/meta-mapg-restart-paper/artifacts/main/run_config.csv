@@ -25,3 +25,10 @@ skip_basin,False
 skip_sanity,False
 steps,260
 success_threshold,0.82
+trajectory_batch_size,384
+trajectory_grid_size,5
+trajectory_log_every,2
+trajectory_max_init,0.92
+trajectory_min_init,0.08
+trajectory_peer_coef,2.0
+trajectory_steps,140

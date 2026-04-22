@@ -23,6 +23,9 @@ python3 experiments/run_meta_mapg_experiments.py \
   --selection-budget 12 \
   --selection-seeds 50 \
   --selection-steps 120 \
+  --trajectory-steps 140 \
+  --trajectory-batch-size 384 \
+  --trajectory-grid-size 5 \
   --batch-size 256 \
   --basin-batch-size 128 \
   --grid-size 21 \
@@ -32,7 +35,8 @@ python3 experiments/run_meta_mapg_experiments.py \
   --own-coef 0.05 \
   --peer-coef 1.5 \
   --basin-peer-coef 2.0 \
-  --selection-peer-coef 2.0
+  --selection-peer-coef 2.0 \
+  --trajectory-peer-coef 2.0
 ```
 
 Recompile the paper with:

@@ -408,6 +408,54 @@ def run_restart_selection(args: argparse.Namespace, outdir: Path) -> pd.DataFram
     return df
 
 
+def run_trajectories(args: argparse.Namespace, outdir: Path) -> pd.DataFrame:
+    game = stag_hunt()
+    rows: list[dict[str, float | int | str]] = []
+    grid = np.linspace(args.trajectory_min_init, args.trajectory_max_init, args.trajectory_grid_size)
+    trajectory_id = 0
+    for method in ["standard_pg", "meta_mapg"]:
+        for i, p1 in enumerate(grid):
+            for j, p2 in enumerate(grid):
+                init_theta = np.zeros((2, game.n_states), dtype=float)
+                init_theta[0, 0] = logit(float(p1))
+                init_theta[1, 0] = logit(float(p2))
+                theta, trace = run_rollout(
+                    game=game,
+                    method=method,
+                    seed=21000 + 409 * trajectory_id + (0 if method == "standard_pg" else 1),
+                    steps=args.trajectory_steps,
+                    batch_size=args.trajectory_batch_size,
+                    lr=args.lr,
+                    inner_lr=args.inner_lr,
+                    peer_coef=args.trajectory_peer_coef,
+                    own_coef=args.own_coef,
+                    init_theta=init_theta,
+                    lr_power=args.lr_power,
+                    lambda_power=0.0,
+                    log_every=args.trajectory_log_every,
+                )
+                success = is_success(theta, game, threshold=args.success_threshold)
+                for row in trace:
+                    rows.append(
+                        {
+                            "experiment": "trajectory",
+                            "game": game.name,
+                            "method": method,
+                            "trajectory_id": trajectory_id,
+                            "init_p1": float(p1),
+                            "init_p2": float(p2),
+                            "step": int(row["step"]),
+                            "coop_p1": float(row["coop_p1"]),
+                            "coop_p2": float(row["coop_p2"]),
+                            "success": int(success),
+                        }
+                    )
+                trajectory_id += 1
+    df = pd.DataFrame(rows)
+    df.to_csv(outdir / "trajectory_trace.csv", index=False)
+    return df
+
+
 def run_basin(args: argparse.Namespace, outdir: Path) -> pd.DataFrame:
     game = stag_hunt()
     rows: list[dict[str, float | int | str]] = []
@@ -598,6 +646,43 @@ def plot_restart_selection(selection: pd.DataFrame, outdir: Path) -> None:
     plt.close(fig)
 
 
+def plot_trajectories(trajectories: pd.DataFrame, outdir: Path) -> None:
+    fig, axes = plt.subplots(1, 2, figsize=(7.4, 3.15), sharex=True, sharey=True)
+    for ax, method in zip(axes, ["standard_pg", "meta_mapg"]):
+        sub = trajectories[trajectories["method"] == method]
+        for _, traj in sub.groupby("trajectory_id"):
+            success = bool(traj["success"].iloc[0])
+            color = "#2fbf71" if success else "#e74c3c"
+            ax.plot(
+                traj["coop_p1"],
+                traj["coop_p2"],
+                color=color,
+                alpha=0.34,
+                linewidth=0.9,
+            )
+            ax.scatter(
+                traj["coop_p1"].iloc[0],
+                traj["coop_p2"].iloc[0],
+                color=color,
+                alpha=0.85,
+                s=8,
+                linewidths=0,
+            )
+        ax.scatter([0.97], [0.97], marker="*", s=95, color="black", label="Payoff-dominant")
+        ax.scatter([0.03], [0.03], marker="x", s=45, color="#555555", label="Risk-dominant")
+        ax.set_title(METHOD_LABELS[method])
+        ax.set_xlabel("Player 1 cooperation")
+        ax.set_xlim(0.0, 1.0)
+        ax.set_ylim(0.0, 1.0)
+        ax.grid(alpha=0.18)
+    axes[0].set_ylabel("Player 2 cooperation")
+    axes[1].legend(loc="lower right", fontsize=7, frameon=True)
+    fig.tight_layout()
+    fig.savefig(outdir / "trajectory_visualization.pdf")
+    fig.savefig(outdir / "trajectory_visualization.png", dpi=180)
+    plt.close(fig)
+
+
 def plot_basin(basin: pd.DataFrame, outdir: Path) -> None:
     methods = ["standard_pg", "meta_mapg"]
     fig, axes = plt.subplots(1, 2, figsize=(7.4, 3.2), sharex=True, sharey=True)
@@ -660,6 +745,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--selection-budget", type=int, default=12)
     parser.add_argument("--selection-seeds", type=int, default=50)
     parser.add_argument("--selection-steps", type=int, default=120)
+    parser.add_argument("--trajectory-steps", type=int, default=140)
+    parser.add_argument("--trajectory-batch-size", type=int, default=384)
+    parser.add_argument("--trajectory-grid-size", type=int, default=5)
+    parser.add_argument("--trajectory-log-every", type=int, default=2)
+    parser.add_argument("--trajectory-min-init", type=float, default=0.08)
+    parser.add_argument("--trajectory-max-init", type=float, default=0.92)
     parser.add_argument("--batch-size", type=int, default=384)
     parser.add_argument("--basin-batch-size", type=int, default=192)
     parser.add_argument("--lr", type=float, default=0.9)
@@ -668,6 +759,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--peer-coef", type=float, default=1.2)
     parser.add_argument("--basin-peer-coef", type=float, default=1.75)
     parser.add_argument("--selection-peer-coef", type=float, default=2.0)
+    parser.add_argument("--trajectory-peer-coef", type=float, default=2.0)
     parser.add_argument("--own-coef", type=float, default=0.35)
     parser.add_argument("--lambda-power", type=float, default=0.0)
     parser.add_argument("--success-threshold", type=float, default=0.82)
@@ -690,9 +782,11 @@ def main() -> None:
     ablation = run_ablation(args, outdir)
     restart = run_restart(args, outdir)
     selection = run_restart_selection(args, outdir)
+    trajectories = run_trajectories(args, outdir)
     plot_ablation(ablation, outdir)
     plot_restart(restart, outdir)
     plot_restart_selection(selection, outdir)
+    plot_trajectories(trajectories, outdir)
 
     if not args.skip_basin:
         basin = run_basin(args, outdir)
