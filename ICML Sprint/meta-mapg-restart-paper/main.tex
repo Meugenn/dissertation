@@ -60,6 +60,24 @@
 Policy-gradient methods in general stochastic games admit local convergence guarantees near stable Nash policies, but these guarantees are usually stated for independent policy-gradient fields that do not anticipate opponent learning. Opponent-aware methods such as LOLA and Meta-MAPG add terms that differentiate through the future learning of other agents, and empirically change both adaptation and equilibrium selection. We analyse this mechanism through a two-phase stochastic-approximation scheme. In the first phase, a constant Meta-MAPG correction acts as a basin-entry device; when the shaped field improves the local drift by $\lambda\mu_M$, the required entry time decreases by the corresponding drift factor. In the second phase, the shaping coefficient is annealed to zero, so Giannou et al.'s local convergence theorem applies near strategically stable Nash equilibria of the original game. Independent restarts then turn the local result into an almost-sure finite-restart guarantee with a geometric tail bound. Small theorem-facing experiments match the main theoretical claims: peer-learning terms change equilibrium selection, restart budget acts as an equilibrium-selection mechanism, basin maps expand under opponent-aware shaping, and a small MLP IPD check shows the peer effect is not purely tabular.
 \end{abstract}
 
+\begin{table*}[t]
+  \centering
+  \caption{Positioning among opponent-aware methods. ``Nash-preserving'' means the stated theory preserves the original game's stable Nash target rather than merely optimising a shaped meta-objective.}
+  \label{tab:related}
+  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lcccc@{}}
+  \toprule
+  Method & Convergence guarantee & Shaping mechanism & Opponent model & Nash-preserving\\
+  \midrule
+  LOLA & No general & 1-step gradient & White-box & No\\
+  SOS & Differentiable games & Stable OS & White-box & SFP-focused\\
+  COLA & Simple-game stability & Consistent OS & White-box & No\\
+  POLA & Empirical/proximal & Proximal OS & Learned & Not primary\\
+  M-FOS & Empirical & Meta-policy OS & No & No\\
+  This work & Local SA + restarts & Two-phase Meta-MAPG & Sample estimates & Yes, by annealing\\
+  \bottomrule
+  \end{tabular*}
+\end{table*}
+
 \section{Introduction}
 
 Learning in stochastic games is hard because each learner faces both an evolving environment and other learners whose policies change in response to the same data. Recent work by \citet{giannou2022convergence} showed that policy-gradient methods converge locally to stable Nash policies in general stochastic games under strategic stability and second-order sufficiency conditions. This result is a strong baseline, but the update it analyses treats opponent learning as part of the background stochastic process rather than as an object to be shaped.
@@ -72,25 +90,6 @@ Third, we extend the local theorem with independent restarts. Local convergence 
 
 \paragraph{Positioning.}
 This paper is complementary to prior opponent-shaping algorithms. LOLA introduced differentiating through an opponent update \citep{foerster2018lola}; SOS stabilised opponent shaping in differentiable games \citep{letcher2019stable}; COLA addresses consistency of mutual shaping \citep{willi2022cola}; POLA improves parameterisation behaviour via a proximal view \citep{zhao2022pola}; and M-FOS learns long-horizon shaping policies without a differentiable opponent model \citep{lu2022mfos}. Our question is narrower: when can a finite-unroll Meta-MAPG estimator be analysed within stochastic approximation and used to improve basin entry without changing the asymptotic Nash target?
-
-\begin{table}[t]
-  \centering
-  \caption{Positioning among opponent-aware methods. ``Nash-preserving'' means the stated theory preserves the original game's stable Nash target rather than merely optimising a shaped meta-objective.}
-  \label{tab:related}
-  \resizebox{\linewidth}{!}{
-  \begin{tabular}{lcccc}
-  \toprule
-  Method & Convergence & Shaping & Opp. model & Nash-pres.\\
-  \midrule
-  LOLA & No general & 1-step gradient & White-box & No\\
-  SOS & Differentiable games & Stable OS & White-box & SFP-focused\\
-  COLA & Simple-game stability & Consistent OS & White-box & No\\
-  POLA & Empirical/proximal & Proximal OS & Learned & Not primary\\
-  M-FOS & Empirical & Meta-policy OS & No & No\\
-  This work & Local SA + restarts & Two-phase Meta-MAPG & Sample estimates & Yes, by annealing\\
-  \bottomrule
-  \end{tabular}}
-\end{table}
 
 \section{Setup}\label{sec:setup}
 
