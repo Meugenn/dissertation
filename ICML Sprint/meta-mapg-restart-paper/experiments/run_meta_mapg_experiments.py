@@ -321,8 +321,10 @@ def run_ablation(args: argparse.Namespace, outdir: Path) -> pd.DataFrame:
 def run_restart(args: argparse.Namespace, outdir: Path) -> pd.DataFrame:
     rows: list[dict[str, float | int | str]] = []
     for game in games().values():
-        for method in ["standard_pg", "meta_mapg"]:
+        for method in METHODS:
             for seed in range(args.seeds):
+                # Same seed gives paired restart initialisations and rollout RNG
+                # streams across methods, reducing between-initialisation noise.
                 rng = np.random.default_rng(9000 + 41 * seed)
                 success = False
                 final_theta = None
@@ -903,13 +905,13 @@ def plot_ablation(ablation: pd.DataFrame, outdir: Path) -> None:
 
 def plot_restart(restart: pd.DataFrame, outdir: Path) -> None:
     fig, axes = plt.subplots(1, 2, figsize=(8.0, 3.0))
-    colors = ["#4c78a8", "#b279a2"]
+    colors = ["#4c78a8", "#f58518", "#54a24b", "#b279a2"]
     for ax, (game_name, game_df) in zip(axes, restart.groupby("game")):
-        grouped = game_df.groupby("method")["restarts"].mean().reindex(["standard_pg", "meta_mapg"])
-        err = game_df.groupby("method")["restarts"].std().reindex(["standard_pg", "meta_mapg"]).fillna(0.0)
-        ax.bar(range(2), grouped.values, yerr=err.values, capsize=4, color=colors)
-        ax.set_xticks(range(2))
-        ax.set_xticklabels(["PG", "Meta-MAPG"])
+        grouped = game_df.groupby("method")["restarts"].mean().reindex(METHODS)
+        err = game_df.groupby("method")["restarts"].std().reindex(METHODS).fillna(0.0)
+        ax.bar(range(len(METHODS)), grouped.values, yerr=err.values, capsize=4, color=colors)
+        ax.set_xticks(range(len(METHODS)))
+        ax.set_xticklabels([METHOD_LABELS[m] for m in METHODS], rotation=25, ha="right")
         ax.set_title(GAME_LABELS.get(game_name, game_name.replace("_", " ").title()))
         ax.grid(axis="y", alpha=0.25)
     axes[0].set_ylabel("Restarts until success")
