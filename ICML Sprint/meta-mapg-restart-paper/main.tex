@@ -342,7 +342,7 @@ The implemented one-step correction is $\eta\widehat H_{ii}^\top\hat g_i$ for ow
   \resizebox{\linewidth}{!}{\input{tables/main_results_table.tex}}
 \end{table}
 
-The empirical claims are modest. The ablation primarily shows that peer-learning terms matter; it does not prove full Meta-MAPG dominates every LOLA-style variant in every game. The trajectory visualisation is finite-time mechanism evidence: it shows that opponent-aware shaping modifies the local flow in the same region where the basin map changes. The restart-budget, basin, and peer-sweep experiments are the direct support for \cref{thm:two-phase,thm:restart,prop:basin,cor:speedup}: restarts turn local convergence into equilibrium search, opponent-aware shaping improves that search by increasing the measured cooperative basin and first-passage probability in Stag Hunt, and \cref{fig:peer-sweep} shows the basin rate growing approximately linearly in $\lambda$ for small $\lambda$ with a corresponding contraction of the first-hit horizon, consistent with the certified-radius and basin-entry bounds. The annealing ablation in \cref{fig:annealing} is the one experiment that actually runs the two-phase schedule of \cref{thm:two-phase} rather than constant shaping; it shows that switching to annealed shaping after $N_0$ steps preserves or slightly improves cooperative success, so the annealed theorem is not paid for with empirical performance. The older restart-count statistic is retained in \cref{tab:results}. The estimator sanity check in \cref{app:sanity} is not a proof of \cref{as:decomp}; it is an implementation check that the sample estimator behaves in the predicted direction as batch size increases.
+The empirical claims are modest. The ablation primarily shows that peer-learning terms matter; it does not prove full Meta-MAPG dominates every LOLA-style variant in every game. The trajectory visualisation is finite-time mechanism evidence: it shows that opponent-aware shaping modifies the local flow in the same region where the basin map changes. The restart-budget, basin, and peer-sweep experiments are the direct support for \cref{thm:two-phase,thm:restart,prop:basin,cor:speedup}: restarts turn local convergence into equilibrium search, opponent-aware shaping improves that search by increasing the measured cooperative basin and first-passage probability in Stag Hunt, and \cref{fig:peer-sweep} shows the basin rate growing approximately linearly in $\lambda$ for small $\lambda$ with a corresponding contraction of the first-hit horizon, consistent with the certified-radius and basin-entry bounds. The annealing ablation in \cref{fig:annealing} is the one experiment that actually runs the two-phase schedule of \cref{thm:two-phase} rather than constant shaping; it shows that switching to annealed shaping after $N_0$ steps preserves or slightly improves cooperative success, so the annealed theorem is not paid for with empirical performance. A small MLP-policy IPD check is deferred to \cref{app:mlp}; it is a proof-of-transport for the peer-learning mechanism, not a deep-MARL benchmark. The older restart-count statistic is retained in \cref{tab:results}. The estimator sanity check in \cref{app:sanity} is not a proof of \cref{as:decomp}; it is an implementation check that the sample estimator behaves in the predicted direction as batch size increases.
 
 \section{Discussion}
 
@@ -352,7 +352,7 @@ The assumptions are also substantive. The Meta-MAPG estimator must have bounded 
 
 The experiments are illustrative rather than definitive. They use matrix and tabular stochastic games because those are the environments in which the theorem's objects can be measured cleanly. Naive random restarts also degrade with dimension: the worst-case mass of a radius-$\rho$ basin inside a radius-$R$ search region scales like $(\rho/R)^d$. Scaling the same decomposition to deep MARL therefore requires better variance control, opponent modeling, automatic differentiation through longer unrolls, and structured restart distributions such as warm starts around high-welfare policies, for example with DiCE-style estimators \citep{foerster2018dice}. The conceptual message is narrower and, we think, useful: opponent-aware gradients can be analysed as stochastic approximation processes, and basin-entry efficiency is the right global metric when the underlying convergence theorem is local.
 
-This paper does not claim unconditional convergence of arbitrary opponent-aware learning in deep MARL. It shows that finite-unroll Meta-MAPG can be analysed within classical stochastic approximation under boundedness, smoothness, Nash-consistency, and summability conditions, and that local convergence can be globalised by independent restarts when local basin mass is positive.
+This paper does not claim unconditional convergence of arbitrary opponent-aware learning in deep MARL. It shows that finite-unroll Meta-MAPG can be analysed within classical stochastic approximation under boundedness, smoothness, Nash-consistency, and summability conditions, and that local convergence can be globalised by independent restarts when local basin mass is positive. The MLP-policy check in \cref{app:mlp} only verifies that the qualitative peer-vs-nonpeer separation survives a modest neural parameterisation.
 
 \appendix
 
@@ -382,11 +382,14 @@ which is the sample cross-score matrix used for the peer correction. Longer Meta
 
 \section{Local Lyapunov Drift}\label{app:lyapunov}
 
-We spell out the stochastic-approximation step used in \cref{lem:local}. Fix an SOS Nash equilibrium $\phi^\ast$ and a ball $\B_\rho=\{\phi:\|\phi-\phi^\ast\|\le\rho\}$ on which the effective field $F$ satisfies
+We spell out the stochastic-approximation step used in \cref{lem:local}. The point is not to reprove \citet{giannou2022convergence}, but to show explicitly that the Meta-MAPG recursion has the same Lyapunov form after the estimator decomposition.
+
+\begin{lemma}[One-step local Lyapunov drift]\label{lem:app-lyapunov}
+Fix an SOS Nash equilibrium $\phi^\ast$ and a ball $\B_\rho=\{\phi:\|\phi-\phi^\ast\|\le\rho\}$ on which the effective field $F$ satisfies
 \[
 \langle F(\phi),\phi-\phi^\ast\rangle\le -\mu\|\phi-\phi^\ast\|^2 .
 \]
-Assume $F$ is locally Lipschitz on $\B_\rho$, the iterates remain in $\B_\rho$ up to the stopping time under consideration, and
+Suppose the stopped iterates remain in $\B_\rho$ and the Meta-MAPG update admits
 \[
 \begin{gathered}
 g_n=F(\phi_n)+\xi_{n+1}+b_n,\\
@@ -394,39 +397,57 @@ g_n=F(\phi_n)+\xi_{n+1}+b_n,\\
 \E[\|\xi_{n+1}\|^2\mid\F_n]\le\sigma^2,
 \end{gathered}
 \]
-with $\|b_n\|\le\beta_n$ and $\sum_n\alpha_n\beta_n<\infty$.
+with $\|b_n\|\le\beta_n$. If $V_n=\|\phi_n-\phi^\ast\|^2$ and $\|F(\phi)\|\le C_F$ on $\B_\rho$, then
+\begin{equation}\label{eq:local-lyap}
+\begin{aligned}
+\E[V_{n+1}\mid\F_n]
+&\le (1-2\mu\alpha_n)V_n
+   +2\alpha_n\beta_n\sqrt{V_n}\\
+&\quad+3\alpha_n^2(C_F^2+\beta_n^2+\sigma^2).
+\end{aligned}
+\end{equation}
+\end{lemma}
 
-Let $V_n=\|\phi_n-\phi^\ast\|^2$. Ignoring projection can only increase the right-hand side locally, and projection onto a convex compact set is non-expansive. Therefore,
+\begin{proof}
+Projection onto the convex compact set $\K$ is non-expansive, so it is enough to bound the unprojected step. Expanding the square gives
 \[
 \begin{aligned}
-\E[V_{n+1}\mid\F_n]
-&\le V_n
-   +2\alpha_n\E[\langle g_n,\phi_n-\phi^\ast\rangle\mid\F_n]\\
-&\quad+\alpha_n^2\E[\|g_n\|^2\mid\F_n]\\
-&\le (1-2\mu\alpha_n)V_n
-   +2\alpha_n\beta_n\sqrt{V_n}\\
-&\quad+\alpha_n^2\E[\|g_n\|^2\mid\F_n].
+V_{n+1}
+&\le \|\phi_n-\phi^\ast+\alpha_n g_n\|^2\\
+&=V_n+2\alpha_n\langle g_n,\phi_n-\phi^\ast\rangle
+  +\alpha_n^2\|g_n\|^2 .
 \end{aligned}
 \]
-Since $F$ is bounded on $\B_\rho$, say $\|F(\phi)\|\le C_F$, the quadratic term obeys
-\[
-\E[\|g_n\|^2\mid\F_n]\le
-3(C_F^2+\beta_n^2+\sigma^2).
-\]
-Equivalently, after absorbing bounded constants,
+Taking conditional expectation and using $\E[\xi_{n+1}\mid\F_n]=0$,
 \[
 \begin{aligned}
-\E[V_{n+1}\mid\F_n]
-&\le (1-2\mu\alpha_n)V_n
-   +2\alpha_n\beta_n\sqrt{V_n}\\
-&\quad+C\alpha_n^2(C_F^2+\sigma^2+\beta_n^2).
+\E[\langle g_n,\phi_n-\phi^\ast\rangle\mid\F_n]
+&=\langle F(\phi_n),\phi_n-\phi^\ast\rangle\\
+&\quad+\langle b_n,\phi_n-\phi^\ast\rangle\\
+&\le -\mu V_n+\beta_n\sqrt{V_n}.
 \end{aligned}
 \]
-Using $2\alpha_n\beta_n\sqrt{V_n}\le \alpha_n\beta_n(1+V_n)$ gives the Robbins--Siegmund form
+For the quadratic term, $(a+b+c)^2\le 3(a^2+b^2+c^2)$ gives
 \[
-\E[V_{n+1}\mid\F_n]\le (1-a_n)V_n+\eta_n,
+\begin{aligned}
+\E[\|g_n\|^2\mid\F_n]
+&\le 3\bigl(\|F(\phi_n)\|^2+\|b_n\|^2\\
+&\quad+\E[\|\xi_{n+1}\|^2\mid\F_n]\bigr)\\
+&\le 3(C_F^2+\beta_n^2+\sigma^2).
+\end{aligned}
 \]
-where $\sum_n a_n=\infty$ and $\sum_n\eta_n<\infty$ for sufficiently large $n$. Robbins--Siegmund then implies $V_n\to V_\infty$ almost surely and $\sum_n a_nV_n<\infty$; since $\sum_n a_n=\infty$, we obtain $V_\infty=0$. Thus $\phi_n\to\phi^\ast$ almost surely on the local event.
+Substituting the last two displays into the square expansion proves \eqref{eq:local-lyap}.
+\end{proof}
+
+If $\sum_n\alpha_n\beta_n<\infty$ and $\sum_n\alpha_n^2<\infty$, then \eqref{eq:local-lyap} is in Robbins--Siegmund form. Indeed,
+\[
+2\alpha_n\beta_n\sqrt{V_n}\le \alpha_n\beta_n(1+V_n),
+\]
+so for all large $n$,
+\[
+\E[V_{n+1}\mid\F_n]\le (1-a_n)V_n+\eta_n
+\]
+with $\sum_n a_n=\infty$ and $\sum_n\eta_n<\infty$. Robbins--Siegmund yields $V_n\to V_\infty$ almost surely and $\sum_n a_nV_n<\infty$; since $\sum_n a_n=\infty$, $V_\infty=0$. Thus $\phi_n\to\phi^\ast$ almost surely on the local event.
 
 \section{Proof of Proposition~\ref{prop:basin}}\label{app:prop-basin}
 
@@ -490,8 +511,11 @@ where $G^2:=3(C_{F_{\lambda_c}}^2+\beta_0^2+\sigma^2)$ is a uniform bound on the
 \paragraph{Step 2: unconditional recursion on the stopped process.}
 Define the stopped sequence $\tilde V_n:=V_{n\wedge\tau}$. The drift bound and the fact that $\tilde V_{n+1}=\tilde V_n$ on $\{n\ge\tau\}$ give
 \[
-\E[\tilde V_{n+1}]\le (1-\mu_{\lambda_c}\alpha_0)\E[\tilde V_n]+c_1,
-\qquad c_1:=\frac{\alpha_0\beta_0^2}{\mu_{\lambda_c}}+\alpha_0^2 G^2.
+\begin{aligned}
+\E[\tilde V_{n+1}]
+&\le (1-\mu_{\lambda_c}\alpha_0)\E[\tilde V_n]+c_1,\\
+c_1&:=\frac{\alpha_0\beta_0^2}{\mu_{\lambda_c}}+\alpha_0^2G^2.
+\end{aligned}
 \]
 Iterating,
 \[
@@ -505,14 +529,20 @@ Using $(1-x)^k\le e^{-xk}$ for $x\in[0,1]$,
 \paragraph{Step 3: Markov's inequality.}
 If $\phi_{N_0}\notin\B_{\rho/2}$ and $\tau>N_0$, then $V_{N_0}\ge (\rho/2)^2$. If $\tau\le N_0$, by continuity of trajectories (or by projection onto $\K$) the iterate at time $\tau$ already lies outside $\B_\rho$, and in particular $V_\tau\ge \rho^2\ge (\rho/2)^2$; $\tilde V_{N_0}=V_\tau$ in that case. Hence in both cases $\tilde V_{N_0}\ge (\rho/2)^2$. Therefore
 \[
-\Pr(\phi_{N_0}\notin\B_{\rho/2}\mid \phi_0\in\B_\rho)
-\le \Pr(\tilde V_{N_0}\ge (\rho/2)^2)
+\begin{aligned}
+&\Pr(\phi_{N_0}\notin\B_{\rho/2}\mid \phi_0\in\B_\rho)\\
+&\quad\le \Pr(\tilde V_{N_0}\ge (\rho/2)^2)
 \le \frac{4\E[\tilde V_{N_0}]}{\rho^2}.
+\end{aligned}
 \]
 Combining with Step 2,
 \[
-\Pr(\phi_{N_0}\notin\B_{\rho/2}\mid\phi_0\in\B_\rho)
-\le \frac{4}{\rho^2}\!\left(V_0 e^{-\mu_{\lambda_c}\alpha_0 N_0}+C\alpha_0(\beta_0^2+\alpha_0\sigma^2)\right),
+\begin{aligned}
+&\Pr(\phi_{N_0}\notin\B_{\rho/2}\mid\phi_0\in\B_\rho)\\
+&\quad\le \frac{4}{\rho^2}\!\left(
+V_0 e^{-\mu_{\lambda_c}\alpha_0 N_0}
++C\alpha_0(\beta_0^2+\alpha_0\sigma^2)\right),
+\end{aligned}
 \]
 for a constant $C$ depending on $\mu_{\lambda_c}$, $C_{F_{\lambda_c}}$.
 
@@ -544,8 +574,13 @@ Conditional on $\phi_0^{(k)}\in\B_\rho$, \cref{thm:two-phase} gives $\Pr(\text{e
 \paragraph{Step 2: geometric tail.}
 Let $T:=\inf\{k\ge 1:A_k\text{ occurs}\}$. Then
 \[
-\Pr(T>k)=\E\!\left[\prod_{j=1}^k\mathbf{1}_{A_j^c}\right]
-=\E\!\left[\E[\mathbf{1}_{A_k^c}\mid\F_k^{\mathrm{epoch}}]\prod_{j=1}^{k-1}\mathbf{1}_{A_j^c}\right].
+\begin{aligned}
+\Pr(T>k)
+&=\E\!\left[\prod_{j=1}^k\mathbf{1}_{A_j^c}\right]\\
+&=\E\!\left[
+\E[\mathbf{1}_{A_k^c}\mid\F_k^{\mathrm{epoch}}]
+\prod_{j=1}^{k-1}\mathbf{1}_{A_j^c}\right].
+\end{aligned}
 \]
 By Step 1, $\E[\mathbf{1}_{A_k^c}\mid\F_k^{\mathrm{epoch}}]\le 1-p_\star$ almost surely, so iterating,
 \[
@@ -599,6 +634,32 @@ python3 experiments/run_meta_mapg_experiments.py
 \end{verbatim}
 }
 The raw files are \texttt{ablation\_summary.csv}, \texttt{restart\_summary.csv}, \texttt{restart\_selection.csv}, \texttt{trajectory\_trace.csv}, \texttt{basin\_map.csv}, \texttt{estimator\_sanity.csv}, \texttt{peer\_sweep.csv}, and \texttt{annealing\_ablation.csv} under \texttt{artifacts/main}. The code uses no exact gradients for updates; expected returns are computed only for logging and evaluation.
+
+The optional MLP-policy IPD check in \cref{app:mlp} can be regenerated with:
+{\scriptsize
+\begin{verbatim}
+python3 experiments/run_mlp_ipd.py
+  --n_seeds 100 \
+  --n_steps 260 \
+  --batch_size 384 \
+  --peer_coef 1.5 \
+  --own_coef 0.35 \
+  --inner_lr 0.55 \
+  --out_dir artifacts/mlp
+\end{verbatim}
+}
+This script requires PyTorch and uses DiCE-style surrogate losses for the higher-order terms. The aggregate results used in the appendix are stored in \texttt{artifacts/mlp/mlp\_ipd\_results.csv}.
+
+\section{Non-Tabular IPD Check}\label{app:mlp}
+
+To check that the ablation is not purely a tabular artefact, we repeat IPD with a two-layer MLP policy for each agent: a 5-dimensional one-hot previous-action input, two tanh hidden layers of width 16, and one Bernoulli cooperation logit. This scales the policy from 5 tabular logits to about 385 parameters per agent. We keep the same 260-step budget, batch size, seed schedule, peer coefficient, and own coefficient as the tabular experiment. Higher-order terms are computed by PyTorch autograd using DiCE-style surrogate losses \citep{foerster2018dice}.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.82\linewidth]{figures/mlp_ipd.pdf}
+  \caption{Non-tabular IPD check with MLP policies. Cooperative success rate on IPD with two-layer MLP policies, 100 seeds, and Wilson 95\% confidence intervals. Peer-aware methods remain above non-peer methods under the same shaping coefficients used in the tabular experiments: PG reaches $0\%$, Meta-PG $2\%$, peer-only $11\%$, and Meta-MAPG $23\%$. This is a proof-of-transport for the mechanism, not a deep-MARL benchmark.}
+  \label{fig:mlp-ipd}
+\end{figure}
 
 \section{Estimator Sanity Check}\label{app:sanity}
 

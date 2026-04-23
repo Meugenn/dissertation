@@ -8,7 +8,9 @@ Canonical files:
 - `main.pdf`: compiled PDF.
 - `references.bib`: bibliography.
 - `experiments/run_meta_mapg_experiments.py`: sample-based tabular experiments.
+- `experiments/run_mlp_ipd.py`: optional PyTorch MLP-policy IPD check.
 - `artifacts/main/`: experiment outputs used in the paper.
+- `artifacts/mlp/`: aggregate MLP-policy IPD check outputs.
 - `figures/` and `tables/`: paper-ready copies of the generated figures and summary table.
 
 Regenerate the experiments from this directory with:
@@ -34,6 +36,19 @@ python3 experiments/run_meta_mapg_experiments.py \
   --sanity-reps 80 \
   --own-coef 0.35 \
   --peer-coef 1.5
+```
+
+Regenerate the optional MLP-policy IPD appendix check with PyTorch installed:
+
+```bash
+python3 experiments/run_mlp_ipd.py \
+  --n_seeds 100 \
+  --n_steps 260 \
+  --batch_size 384 \
+  --peer_coef 1.5 \
+  --own_coef 0.35 \
+  --inner_lr 0.55 \
+  --out_dir artifacts/mlp
 ```
 
 Recompile the paper with:
