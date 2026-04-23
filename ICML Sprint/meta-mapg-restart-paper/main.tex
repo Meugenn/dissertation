@@ -57,7 +57,7 @@
 \printAffiliationsAndNotice{}
 
 \begin{abstract}
-Policy-gradient methods in general stochastic games admit local convergence guarantees near stable Nash policies, but these guarantees are usually stated for independent policy-gradient fields that do not anticipate opponent learning. Opponent-aware methods such as LOLA and Meta-MAPG add terms that differentiate through the future learning of other agents, and empirically change both adaptation and equilibrium selection. We analyse this mechanism through a two-phase stochastic-approximation scheme. In the first phase, a constant Meta-MAPG correction acts as a basin-entry device; when the shaped field improves the local drift by $\lambda\mu_M$, the required entry time decreases by the corresponding drift factor. In the second phase, the shaping coefficient is annealed to zero, so Giannou et al.'s local convergence theorem applies near strategically stable Nash equilibria of the original game. Independent restarts then turn the local result into an almost-sure finite-restart guarantee with a geometric tail bound. Small theorem-facing experiments match the main theoretical claims: peer-learning terms change equilibrium selection, restart budget acts as an equilibrium-selection mechanism, basin maps expand under opponent-aware shaping, and a small MLP IPD check shows the peer effect is not purely tabular.
+Policy-gradient methods converge locally near stable Nash policies in general stochastic games, but the standard theory does not anticipate opponent learning. LOLA and Meta-MAPG add gradients through other agents' future updates and change equilibrium selection in practice. We give a two-phase stochastic-approximation account of this mechanism. Phase 1 uses a constant Meta-MAPG correction as a basin-entry device; if the shaped field improves local drift by $\lambda\mu_M$, the certified entry time shrinks by the same factor. Phase 2 anneals shaping to zero, so Giannou et al.'s local theorem applies to stable Nash equilibria of the original game. Independent restarts globalise the result with an almost-sure finite-restart guarantee and a geometric tail bound. The experiments match the theorem: peer-learning changes equilibrium selection, restart budget selects equilibria, basin maps expand under opponent-aware shaping, and a small MLP IPD check shows the effect is not purely tabular.
 \end{abstract}
 
 \begin{table*}[t]
@@ -80,16 +80,16 @@ Policy-gradient methods in general stochastic games admit local convergence guar
 
 \section{Introduction}
 
-Learning in stochastic games is hard because each learner faces both an evolving environment and other learners whose policies change in response to the same data. Recent work by \citet{giannou2022convergence} showed that policy-gradient methods converge locally to stable Nash policies in general stochastic games under strategic stability and second-order sufficiency conditions. This result is a strong baseline, but the update it analyses treats opponent learning as part of the background stochastic process rather than as an object to be shaped.
+Learning in stochastic games is hard because every learner changes the environment faced by the others. \citet{giannou2022convergence} prove local convergence of policy gradients to stable Nash policies under strategic stability and second-order sufficiency. This is the right baseline. It still treats opponent learning as background noise, not as a quantity to shape.
 
-Opponent-aware policy gradients address this missing dependence. LOLA differentiates through an opponent's anticipated update \citep{foerster2018lola,letcher2019stable}. Meta-MAPG derives a meta-policy-gradient theorem with three terms: the current-policy gradient, an own-learning gradient, and a peer-learning gradient that captures how the agent's current behaviour changes the future policies of other agents \citep{kim2021meta}. These terms matter empirically, but the convergence status of the resulting stochastic process is less clear than for standard PG.
+Opponent-aware policy gradients put this dependence into the update. LOLA differentiates through an opponent's anticipated step \citep{foerster2018lola,letcher2019stable}. Meta-MAPG gives three terms: the current-policy gradient, an own-learning gradient, and a peer-learning gradient for the effect of current behaviour on other agents' future policies \citep{kim2021meta}. These terms matter empirically. Their stochastic-approximation status is less clear.
 
-We close this gap in three steps. First, under bounded rewards, smooth policies, controlled unroll length, and standard sampling assumptions, we show that the Meta-MAPG update is a stochastic approximation to the base game-gradient field plus controlled opponent-aware terms. Second, we prove a two-phase result that separates the short-run use of constant shaping from the asymptotic need for annealing. Constant Meta-MAPG shaping is used only for a finite basin-entry phase; once the iterate reaches a safe subset of the stable basin, the shaping coefficient is annealed so that the limiting stationary points remain the stable Nash equilibria of the original stochastic game.
+We prove three claims. First, under bounded rewards, smooth policies, controlled unroll length, and standard sampling assumptions, the Meta-MAPG update is a stochastic approximation to the base game-gradient field plus controlled opponent-aware terms. Second, constant shaping and convergence need not conflict: use constant Meta-MAPG shaping only for finite-time basin entry, then anneal it so the limiting stationary points remain the stable Nash equilibria of the original game.
 
-Third, we extend the local theorem with independent restarts. Local convergence still depends on the basin of attraction; even normal-form games can contain cycles and multiple attractors. If restarts draw from a full-support distribution on a compact policy-parameter set, however, each epoch has a fixed positive probability of starting in the local basin. This yields an almost-sure finite-restart guarantee and an explicit expected restart bound. In this setting, restart budget becomes a simple equilibrium-selection mechanism whose effect is governed by basin mass. Experiments in Stag Hunt and iterated Prisoner's Dilemma are designed to match the theorem's ingredients: component ablations, restart-budget selection, basin volume, and estimator variance.
+Third, independent restarts globalise the local theorem. Local convergence depends on basin mass; normal-form games can have cycles and several attractors. With a full-support restart distribution on a compact parameter set, each epoch has a fixed positive probability of landing in the basin. This gives almost-sure finite restart success and an expected restart bound. Restart budget becomes equilibrium-selection budget. Experiments in Stag Hunt and iterated Prisoner's Dilemma test the theorem's ingredients: component ablations, restart-budget selection, basin volume, and estimator variance.
 
 \paragraph{Positioning.}
-This paper is complementary to prior opponent-shaping algorithms. LOLA introduced differentiating through an opponent update \citep{foerster2018lola}; SOS stabilised opponent shaping in differentiable games \citep{letcher2019stable}; COLA addresses consistency of mutual shaping \citep{willi2022cola}; POLA improves parameterisation behaviour via a proximal view \citep{zhao2022pola}; and M-FOS learns long-horizon shaping policies without a differentiable opponent model \citep{lu2022mfos}. Our question is narrower: when can a finite-unroll Meta-MAPG estimator be analysed within stochastic approximation and used to improve basin entry without changing the asymptotic Nash target?
+Prior work builds opponent-shaping algorithms. LOLA differentiates through an opponent update \citep{foerster2018lola}; SOS stabilises shaping in differentiable games \citep{letcher2019stable}; COLA enforces consistency of mutual shaping \citep{willi2022cola}; POLA adds a proximal view \citep{zhao2022pola}; M-FOS learns long-horizon shaping policies without a differentiable opponent model \citep{lu2022mfos}. We ask a narrower question: when does finite-unroll Meta-MAPG fit stochastic approximation, improve basin entry, and preserve the asymptotic Nash target?
 
 \section{Setup}\label{sec:setup}
 
@@ -141,7 +141,7 @@ where $L$ is the unroll length. In the convergence theorem we use the annealed u
 \phi_{n+1}
 =\Proj_{\K}\!\left[\phi_n+\alpha_n\left(\hat v_n+\lambda_n\hat M_{L_n,n}\right)\right],
 \end{equation}
-where $\K\subset\R^d$ is compact, $\hat M_{L_n,n}$ estimates the combined own/peer Meta-MAPG correction, and $\lambda_n$ controls the asymptotic size of opponent-aware shaping. The compact projection can be replaced by any standard boundedness mechanism; it is stated explicitly so that the projection lemma of \citet{kushner1978stochastic} applies and so that the ODE tracking argument in \citet{borkar2008stochastic} holds without additional tightness work.
+Here $\K\subset\R^d$ is compact, $\hat M_{L_n,n}$ estimates the combined own/peer correction, and $\lambda_n$ controls the asymptotic shaping strength. Projection can be replaced by any standard boundedness mechanism. We state it explicitly so the projection lemma of \citet{kushner1978stochastic} and the ODE tracking argument of \citet{borkar2008stochastic} apply without extra tightness work.
 
 \begin{definition}[Nash-consistent shaping]\label{def:nash-consistent}
 Let $U$ be a neighbourhood of a stable Nash set $\N$ of the base game-gradient field $v$. A scheduled opponent-aware correction $\lambda_n M_{L_n}$ is Nash-consistent on $U$ if its contribution to the stochastic-approximation recursion is either summable,
@@ -154,7 +154,7 @@ so the limiting ODE on $U$ is $\dot\phi=v(\phi)$, or else its non-vanishing limi
 
 \section{Assumptions}\label{sec:assumptions}
 
-The assumptions separate inherited stochastic-approximation conditions from the new Meta-MAPG estimator requirement.
+The assumptions separate standard stochastic approximation from the Meta-MAPG estimator step.
 
 \begin{assumption}[Step sizes and bounded iterates]\label{as:steps}
 The step sizes satisfy $\alpha_n>0$, $\sum_n\alpha_n=\infty$, and $\sum_n\alpha_n^2<\infty$. Iterates remain in a compact set $\K$, either by projection in \eqref{eq:update} or by an equivalent stability mechanism.
@@ -191,7 +191,7 @@ The stable set $\N$ consists of isolated SOS Nash equilibria satisfying \cref{de
 \end{assumption}
 
 \begin{remark}
-The target of convergence is the original game's stable Nash set $\N$. Meta-objectives can have fixed points that differ from Nash equilibria if shaping is kept constant and allowed to dominate the original game. The theorem below is therefore an annealed or explicitly equilibrium-preserving statement; constant shaping is used for the finite-time basin geometry in \cref{prop:basin}, not as an asymptotic claim that arbitrary meta-game stationary points are Nash equilibria.
+The convergence target is the original game's stable Nash set $\N$. If shaping is kept constant, meta-objectives can have non-Nash fixed points. The theorem is therefore annealed, or explicitly equilibrium-preserving. Constant shaping is used for finite-time basin geometry in \cref{prop:basin}, not to claim that arbitrary meta-game stationary points are Nash.
 \end{remark}
 
 \section{Main Result}\label{sec:main}
@@ -257,29 +257,29 @@ Let each restart epoch run the two-phase procedure of \cref{thm:two-phase}. Let 
 \Pr(T>k)\le (1-p_\rho(1-\delta))^k,\qquad
 \E[T]\le \frac{1}{p_\rho(1-\delta)}.
 \]
-Consequently, after a finite random number of restarts, the process enters an epoch in which the local theorem applies and then converges almost surely to a stable Nash equilibrium in $\N$. This is a restart globalisation of a local convergence result, not a global contraction statement for the underlying vector field. In the worst case, if $\nu$ is roughly uniform on a radius-$R$ $d$-dimensional compact set and $\B_\rho$ contains a radius-$\rho$ ball, the bound scales as $O((R/\rho)^d)$; this motivates structured or warm-start restarts in high-dimensional domains.
+Thus, after finitely many restarts, the process enters an epoch where the local theorem applies and then converges almost surely to a stable Nash equilibrium in $\N$. This globalises a local theorem by search; it does not make the vector field globally contracting. In the worst case, if $\nu$ is roughly uniform on a radius-$R$ $d$-dimensional compact set and $\B_\rho$ contains a radius-$\rho$ ball, the bound scales as $O((R/\rho)^d)$. High-dimensional domains therefore need structured or warm-start restarts.
 \end{theorem}
 
 \section{Proof Sketch}\label{sec:proof}
 
 \paragraph{Step 1: estimator decomposition.}
-This is the only step specific to Meta-MAPG. Using the Meta-MAPG theorem of \citet{kim2021meta}, the sampled gradient is split into current, own-learning, and peer-learning score-function terms. Under bounded rewards and bounded policy scores, each sample term has finite conditional variance; subtracting its conditional mean yields a martingale difference. Truncating the unroll at $L_n$ and using an approximate opponent model introduce a bias $b_n$, controlled by the schedule in \cref{as:trunc}.
+This is the Meta-MAPG-specific step. The theorem of \citet{kim2021meta} splits the sampled gradient into current, own-learning, and peer-learning score-function terms. Bounded rewards and scores give finite conditional variance; subtracting the conditional mean gives martingale noise. Finite unrolls and approximate opponent models give the bias $b_n$, controlled by \cref{as:trunc}.
 
 \paragraph{Step 2: summability.}
 The bias and variance terms are checked against the stochastic-approximation conditions. Because $\sum_n\alpha_n^2<\infty$, the square-integrable martingale noise is summable in the Robbins--Siegmund sense \citep{robbins1951stochastic,robbins1971convergence,hall1980martingale}. Because $\sum_n\alpha_n\beta_n<\infty$, the deterministic truncation bias is also summable.
 
 \paragraph{Step 3: local theorem transfer.}
-The Meta-MAPG update is mapped to Giannou et al.'s local PG template. In the annealed regime, the limiting field is Nash-consistent in the strongest sense: stationary points in the local neighbourhood are the same stable Nash policies as in the base game-gradient field. The local Lyapunov recursion is therefore the same one used by \citet{giannou2022convergence}, with extra summable forcing terms.
+Map the Meta-MAPG update to Giannou et al.'s local PG template. In the annealed regime, the limiting field is Nash-consistent: local stationary points are the same stable Nash policies as for the base game-gradient field. The Lyapunov recursion is the same as in \citet{giannou2022convergence}, up to summable forcing terms.
 
 \paragraph{Step 4: two-phase transfer.}
-\Cref{thm:two-phase} separates finite-time shaping from asymptotic convergence. During phase 1, constant shaping is analysed only as a basin-entry mechanism, using the drift constant $\mu_{\lambda_c}$ supplied by \cref{prop:basin}. Once the iterate enters $\B_{\rho/2}$, the schedule switches to annealed shaping; \cref{lem:local} then follows by invoking the local attraction theorem for stable and SOS Nash policies. The proof does not require global monotonicity of the game; it is conditioned on the local basin, exactly as in the original theorem.
+\Cref{thm:two-phase} separates finite-time shaping from asymptotic convergence. Phase 1 uses constant shaping only for basin entry, with drift constant $\mu_{\lambda_c}$ from \cref{prop:basin}. After entry into $\B_{\rho/2}$, the schedule anneals; \cref{lem:local} follows from the local attraction theorem for stable SOS Nash policies. No global monotonicity is required. The argument is local, as in Giannou et al.
 
 \paragraph{Step 5: restart globalisation.}
-Restarts globalise this local guarantee in the usual product-space way. Each epoch is independent. Since the restart distribution assigns mass $p_\rho$ to the phase-1 region and the two-phase theorem reaches phase 2 with probability at least $1-\delta$, each epoch succeeds with probability at least $p_\rho(1-\delta)$. The first successful epoch is dominated by a geometric random variable, which proves \cref{thm:restart}. The empirical basin maps in \cref{sec:experiments} illustrate why opponent-aware shaping can improve the constant in this bound by increasing basin-entry probability.
+Restarts globalise the local result by a geometric argument. Each epoch is independent. The restart distribution assigns mass $p_\rho$ to the phase-1 region, and the two-phase theorem reaches phase 2 with probability at least $1-\delta$. Each epoch therefore succeeds with probability at least $p_\rho(1-\delta)$. The first successful epoch is geometrically dominated. Basin maps in \cref{sec:experiments} show how opponent-aware shaping can improve this constant by increasing basin-entry probability.
 
 \section{Experiments}\label{sec:experiments}
 
-The experiments are intentionally small and theorem-facing. We use tabular Bernoulli policies in Stag Hunt and finite-horizon iterated Prisoner's Dilemma (IPD). Stag Hunt is the minimal setting in which the phenomenon this paper analyses actually occurs: two pure strategic-stable Nash equilibria (payoff-dominant and risk-dominant), a non-trivial basin structure, and a two-dimensional joint policy space that admits closed-form computation of the drift constants $\mu$ and $\mu_M$ used in \cref{prop:basin}. This is also the canonical testbed for opponent shaping in LOLA, SOS, and COLA \citep{foerster2018lola,letcher2019stable,willi2022cola}. IPD is included as an orthogonal test case: the same estimator must survive a finite-horizon sequential-decision environment with a richer state space. For clarity, our Stag Hunt is a one-state, one-step, two-agent Markov game: each agent samples $C$ or $D$ from a Bernoulli policy, with row-player payoff matrix
+The experiments are small by design. We use tabular Bernoulli policies in Stag Hunt and finite-horizon iterated Prisoner's Dilemma (IPD). Stag Hunt is the core test: two stable Nash equilibria, non-trivial basins, and a two-dimensional policy space where the drift constants $\mu$ and $\mu_M$ in \cref{prop:basin} can be measured. It is also the standard testbed for LOLA, SOS, and COLA \citep{foerster2018lola,letcher2019stable,willi2022cola}. IPD tests the same estimator in a finite-horizon sequential game. Our Stag Hunt is a one-state, one-step, two-agent Markov game. Each agent samples $C$ or $D$ from a Bernoulli policy, with row-player payoff matrix
 \[
 \begin{array}{c|cc}
  & C & D\\ \hline
@@ -287,7 +287,7 @@ C & 4 & 0\\
 D & 3 & 2
 \end{array}
 \]
-and the column-player payoff given by the transpose. Thus $(C,C)$ is the payoff-dominant Nash equilibrium with social welfare $8$, while $(D,D)$ is the risk-dominant Nash equilibrium with social welfare $4$. In the Stag Hunt figures, each coordinate is simply an agent's cooperation probability $p_i=\pi_i(C)$, and cooperative success means both final cooperation probabilities exceed $0.82$.
+and the column-player payoff given by the transpose. Thus $(C,C)$ is payoff-dominant with social welfare $8$, while $(D,D)$ is risk-dominant with social welfare $4$. In the figures, each coordinate is an agent's cooperation probability $p_i=\pi_i(C)$. Success means both final cooperation probabilities exceed $0.82$.
 
 Updates are sample-based: for a trajectory score $s_i=\nabla_{\phi_i}\log p_\phi(\tau)$ and return $R_i$, the base estimator is $\hat g_i=\frac{1}{B}\sum_b R_i^{(b)}s_i^{(b)}$. The own-learning term uses the likelihood-ratio Hessian estimator
 \[
@@ -297,40 +297,40 @@ and the peer-learning term uses the cross-score estimator
 \[
 \widehat C_{ji}=\frac{1}{B}\sum_b R_j^{(b)}s_j^{(b)}s_i^{(b)\top}.
 \]
-The implemented one-step correction is $\eta\widehat H_{ii}^\top\hat g_i$ for own learning and $\eta\widehat C_{ji}^\top\widehat{\nabla_{\phi_j}J_i}$ for peer learning. We compare standard PG, Meta-PG (no peer term), peer-only LOLA-style shaping (no own term), and full Meta-MAPG. Unless stated otherwise, reported summary experiments use 100 random seeds; restart summaries use paired initial policies across all four methods, restart-budget curves use paired initial policies across PG and Meta-MAPG, and all main experiments use the same peer coefficient. Run configuration and raw CSVs are in the experiment artifact directory.
+The implemented one-step correction is $\eta\widehat H_{ii}^\top\hat g_i$ for own learning and $\eta\widehat C_{ji}^\top\widehat{\nabla_{\phi_j}J_i}$ for peer learning. We compare PG, Meta-PG (no peer term), peer-only LOLA-style shaping (no own term), and full Meta-MAPG. Unless stated otherwise, summaries use 100 seeds; restart summaries pair initial policies across all four methods; restart-budget curves pair PG and Meta-MAPG starts; all main experiments use the same peer coefficient. Raw CSVs and run configuration are included.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/ablation_success.pdf}
-  \caption{Component ablation with Wilson $95\%$ confidence intervals over $100$ seeds. Peer-aware methods (peer-only, Meta-MAPG) are separated from non-peer methods (PG, Meta-PG) by non-overlapping CIs in both games, so the peer-learning effect is statistically significant. Peer-only and full Meta-MAPG are not distinguishable within CIs, so the figure does not claim strict dominance of the full method; it isolates that the peer-learning term is the component that changes cooperative outcomes.}
+  \caption{Component ablation with Wilson $95\%$ confidence intervals over $100$ seeds. Peer-aware methods (peer-only, Meta-MAPG) separate from non-peer methods (PG, Meta-PG) in both games. Peer-only and full Meta-MAPG are not distinguishable within CIs; the claim is the peer-learning effect, not strict dominance of the full method.}
   \label{fig:ablation}
 \end{figure}
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/basin_trajectories.pdf}
-  \caption{Basin geometry and dynamics in Stag Hunt. Background shading is the empirical basin map on a $21\times21$ grid of initial cooperation probabilities (lavender = converges to the payoff-dominant equilibrium, cream = converges to the risk-dominant equilibrium). The dashed contour is the $0.5$-success level set of the smoothed basin indicator, i.e.\ the empirical separatrix. Overlaid trajectories show joint cooperation evolution from a $5\times5$ sub-grid of initialisations; green curves land above the frontier, red curves fall below. Under Meta-MAPG the frontier is pushed left and down: the certified basin grows from $27.0\%$ of the grid under PG to $42.6\%$, consistent with \cref{prop:basin}. This is not a convergence proof; it is the geometric bridge between the stochastic-approximation theorem and the restart-efficiency gains.}
+  \caption{Basin geometry and dynamics in Stag Hunt. Background shading is the empirical basin map on a $21\times21$ grid (lavender = payoff-dominant, cream = risk-dominant). The dashed contour is the empirical separatrix. Overlaid trajectories start from a $5\times5$ sub-grid; green curves succeed, red curves fail. Meta-MAPG pushes the frontier left and down: the cooperative basin grows from $27.0\%$ under PG to $42.6\%$, consistent with \cref{prop:basin}.}
   \label{fig:basin-traj}
 \end{figure}
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/restart_selection.pdf}
-  \caption{Restart budget as an equilibrium-selection mechanism in Stag Hunt. For paired restart initialisations, we plot the probability that the payoff-dominant equilibrium has been discovered by budget $K$; bands show 95\% confidence intervals over seeds. The inset shows the cumulative area above the best-welfare curve, $\sum_{k\le K}(8-W_k)$, where lower is better. Meta-MAPG reaches the payoff-dominant basin with smaller restart budgets, consistent with opponent-aware shaping improving basin entry.}
+  \caption{Restart budget as equilibrium-selection budget in Stag Hunt. With paired restart initialisations, we plot the probability of discovering the payoff-dominant equilibrium by budget $K$; bands show 95\% confidence intervals. The inset shows $\sum_{k\le K}(8-W_k)$, the cumulative gap below best welfare. Lower is better. Meta-MAPG reaches the good basin with fewer restarts.}
   \label{fig:restart}
 \end{figure}
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/peer_sweep.pdf}
-  \caption{Peer-shaping sweep on Stag Hunt. Left: fraction of $11\times 11$ initial-policy grid points that converge to the payoff-dominant basin, as a function of the peer-shaping coefficient $\lambda$. The rate grows monotonically from the PG baseline ($\lambda=0$, $29.8\%$) to $62.8\%$ at $\lambda=5$, approximately linearly for small $\lambda$ as predicted by the certified-radius scaling $\rho_\lambda\gtrsim\rho_0+\lambda\mu_M/(2L)$ of \cref{prop:basin}. Right: mean first-hit step, conditional on eventual success, as a function of $\lambda$; basin-entry horizon contracts from $\approx 25$ steps to $\approx 20$ steps, consistent with \cref{cor:speedup}.}
+  \caption{Peer-shaping sweep on Stag Hunt. Left: payoff-dominant basin fraction on an $11\times 11$ initial-policy grid as peer coefficient $\lambda$ varies. The rate grows from the PG baseline ($29.8\%$) to $62.8\%$ at $\lambda=5$, roughly linearly for small $\lambda$, as predicted by $\rho_\lambda\gtrsim\rho_0+\lambda\mu_M/(2L)$. Right: conditional mean first-hit step contracts from $\approx 25$ to $\approx 20$, matching \cref{cor:speedup}.}
   \label{fig:peer-sweep}
 \end{figure}
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/annealing_ablation.pdf}
-  \caption{Two-phase schedule vs constant shaping in Stag Hunt ($80$ seeds, $260$ steps, $\lambda_c=1.5$). Left: cooperative success rate. PG reaches $31\%$, constant-shaping Meta-MAPG reaches $41\%$, and the two-phase schedule of \cref{thm:two-phase} reaches $43\%$, showing that annealing to recover Nash consistency does not degrade empirical basin entry. Right: shaping schedule $\lambda_n$ versus step; the dotted vertical line is the phase-1/phase-2 boundary $N_0=100$. This is the only experiment that runs a genuinely annealed schedule rather than constant $\lambda$.}
+  \caption{Two-phase schedule vs constant shaping in Stag Hunt ($80$ seeds, $260$ steps, $\lambda_c=1.5$). PG reaches $31\%$, constant-shaping Meta-MAPG reaches $41\%$, and the two-phase schedule reaches $43\%$. Annealing restores Nash consistency without losing basin-entry performance. Right: $\lambda_n$ over time; the dotted line marks $N_0=100$.}
   \label{fig:annealing}
 \end{figure}
 
@@ -341,17 +341,17 @@ The implemented one-step correction is $\eta\widehat H_{ii}^\top\hat g_i$ for ow
   \resizebox{\linewidth}{!}{\input{tables/main_results_table.tex}}
 \end{table}
 
-The empirical claims are modest. The ablation primarily shows that peer-learning terms matter; it does not prove full Meta-MAPG dominates every LOLA-style variant in every game. The trajectory visualisation is finite-time mechanism evidence: it shows that opponent-aware shaping modifies the local flow in the same region where the basin map changes. The restart-budget, basin, and peer-sweep experiments are the direct support for \cref{thm:two-phase,thm:restart,prop:basin,cor:speedup}: restarts turn local convergence into equilibrium search, opponent-aware shaping improves that search by increasing the measured cooperative basin and first-passage probability in Stag Hunt, and \cref{fig:peer-sweep} shows the basin rate growing approximately linearly in $\lambda$ for small $\lambda$ with a corresponding contraction of the first-hit horizon, consistent with the certified-radius and basin-entry bounds. The annealing ablation in \cref{fig:annealing} is the one experiment that actually runs the two-phase schedule of \cref{thm:two-phase} rather than constant shaping; it shows that switching to annealed shaping after $N_0$ steps preserves or slightly improves cooperative success, so the annealed theorem is not paid for with empirical performance. A small MLP-policy IPD check is deferred to \cref{app:mlp}; it is a proof-of-transport for the peer-learning mechanism, not a deep-MARL benchmark. The restart-count statistic in \cref{tab:results} is reported for all four methods. The estimator sanity check in \cref{app:sanity} is not a proof of \cref{as:decomp}; it is an implementation check that the sample estimator behaves in the predicted direction as batch size increases.
+The ablation shows that peer-learning terms matter; it does not show that full Meta-MAPG dominates every LOLA-style variant. The trajectory figure shows the finite-time mechanism: opponent-aware shaping changes the local flow where the basin map changes. The restart-budget, basin, and peer-sweep experiments support \cref{thm:two-phase,thm:restart,prop:basin,cor:speedup}: restarts turn local convergence into equilibrium search, and shaping improves that search by increasing cooperative basin mass and first-passage probability. \Cref{fig:annealing} runs the two-phase schedule directly. It shows that annealing after $N_0$ steps preserves basin-entry performance while restoring the Nash target. The MLP-policy IPD check in \cref{app:mlp} is a transfer check, not a deep-MARL benchmark. The estimator sanity check in \cref{app:sanity} is not a proof of \cref{as:decomp}; it checks that the sample estimator moves in the predicted direction as batch size grows.
 
 \section{Discussion}
 
-The result is local before it is global. Meta-MAPG inherits Giannou et al.'s stable-Nash theory only inside attracting neighbourhoods and only after the estimator has been placed in the stochastic-approximation form. The two-phase theorem makes the intended algorithmic role precise: constant shaping is a finite-time basin-entry device, while annealing restores the original Nash target for asymptotic convergence. Restarts remove dependence on a particular initialisation and can be used to search across equilibrium basins; selecting the best discovered endpoint then turns restart budget into a simple equilibrium-selection mechanism. Its expected complexity depends on the basin probability $p_\rho$; opponent-aware shaping helps only when it increases this probability.
+The theorem is local first. Meta-MAPG inherits Giannou et al.'s stable-Nash theory only inside attracting neighbourhoods and only after the estimator has stochastic-approximation form. The two-phase theorem fixes the algorithmic role: constant shaping is for basin entry; annealing restores the original Nash target. Restarts search across basins. Selecting the best endpoint makes restart budget an equilibrium-selection resource. Its cost depends on basin probability $p_\rho$; shaping helps only when it increases that probability.
 
-The assumptions are also substantive. The Meta-MAPG estimator must have bounded conditional variance, truncation schedules must make unroll bias summable, and asymptotic shaping must be Nash-consistent. Constant shaping is useful for basin geometry and finite-time behaviour, but a constant peer term can move the limiting fixed points in general-sum games. This is why the theorem separates annealed convergence from constant-shaping basin diagnostics.
+The assumptions are real. The estimator must have bounded conditional variance. Truncation must make unroll bias summable. Asymptotic shaping must be Nash-consistent. Constant shaping is useful for basin geometry, but a constant peer term can move fixed points in general-sum games. This is why the theorem separates annealed convergence from constant-shaping diagnostics.
 
-The experiments are illustrative rather than definitive. They use matrix and tabular stochastic games because those are the environments in which the theorem's objects can be measured cleanly. Naive random restarts also degrade with dimension: the worst-case mass of a radius-$\rho$ basin inside a radius-$R$ search region scales like $(\rho/R)^d$. Scaling the same decomposition to deep MARL therefore requires better variance control, opponent modeling, automatic differentiation through longer unrolls, and structured restart distributions such as warm starts around high-welfare policies, for example with DiCE-style estimators \citep{foerster2018dice}. The conceptual message is narrower and, we think, useful: opponent-aware gradients can be analysed as stochastic approximation processes, and basin-entry efficiency is the right global metric when the underlying convergence theorem is local.
+The experiments are deliberately limited. Matrix and tabular games let us measure the theorem's objects: basins, restarts, drift, and estimator variance. Naive random restarts degrade with dimension: a radius-$\rho$ basin inside a radius-$R$ search region has worst-case mass $(\rho/R)^d$. Deep MARL needs stronger variance control, opponent models, differentiable longer unrolls, and structured restarts such as warm starts around high-welfare policies, possibly with DiCE-style estimators \citep{foerster2018dice}. The claim here is narrower: opponent-aware gradients can fit stochastic approximation, and basin-entry efficiency is the right global metric when convergence is local.
 
-This paper does not claim unconditional convergence of arbitrary opponent-aware learning in deep MARL. It shows that finite-unroll Meta-MAPG can be analysed within classical stochastic approximation under boundedness, smoothness, Nash-consistency, and summability conditions, and that local convergence can be globalised by independent restarts when local basin mass is positive. The MLP-policy check in \cref{app:mlp} only verifies that the qualitative peer-vs-nonpeer separation survives a modest neural parameterisation.
+We do not claim unconditional convergence of arbitrary opponent-aware learning in deep MARL. We show that finite-unroll Meta-MAPG fits classical stochastic approximation under boundedness, smoothness, Nash-consistency, and summability assumptions. Independent restarts globalise the local result when local basin mass is positive. The MLP-policy check in \cref{app:mlp} only tests whether the peer-vs-nonpeer separation survives a modest neural parameterisation.
 
 \appendix
 
@@ -381,7 +381,7 @@ which is the sample cross-score matrix used for the peer correction. Longer Meta
 
 \section{Local Lyapunov Drift}\label{app:lyapunov}
 
-We spell out the stochastic-approximation step used in \cref{lem:local}. The point is not to reprove \citet{giannou2022convergence}, but to show explicitly that the Meta-MAPG recursion has the same Lyapunov form after the estimator decomposition.
+We spell out the stochastic-approximation step behind \cref{lem:local}. The goal is not to reprove \citet{giannou2022convergence}; it is to show that Meta-MAPG has the same Lyapunov form after decomposition.
 
 \begin{lemma}[One-step local Lyapunov drift]\label{lem:app-lyapunov}
 Fix an SOS Nash equilibrium $\phi^\ast$ and a ball $\B_\rho=\{\phi:\|\phi-\phi^\ast\|\le\rho\}$ on which the effective field $F$ satisfies
@@ -599,18 +599,18 @@ Shaping reduces the base of this dimensional factor whenever $\mu_M>0$; the over
 
 \section{Experiment Reproducibility}\label{app:repro}
 
-The experiment scripts, generated figures, raw CSVs, and run configurations are included with the submission. The tabular script saves its command-line configuration and all CSV outputs under \texttt{artifacts/main}. The raw outputs cover the ablation, restart, trajectory, basin, peer-sweep, annealing, and estimator-sanity figures. The code uses no exact gradients for updates; expected returns are computed only for logging and evaluation.
+The experiment scripts, figures, CSVs, and run configurations are included. The tabular script saves its command-line configuration and outputs under \texttt{artifacts/main}. These files cover the ablation, restart, trajectory, basin, peer-sweep, annealing, and estimator-sanity figures. Updates use no exact gradients; expected returns are computed only for logging and evaluation.
 
 The optional MLP-policy IPD check in \cref{app:mlp} requires PyTorch and uses DiCE-style surrogate losses for the higher-order terms. Its aggregate results are stored under \texttt{artifacts/mlp}. The repository README contains the full commands for regenerating both sets of experiments.
 
 \section{Non-Tabular IPD Check}\label{app:mlp}
 
-To check that the ablation is not purely a tabular artefact, we repeat IPD with a two-layer MLP policy for each agent: a 5-dimensional one-hot previous-action input, two tanh hidden layers of width 16, and one Bernoulli cooperation logit. This scales the policy from 5 tabular logits to about 385 parameters per agent. We keep the same 260-step budget, batch size, seed schedule, peer coefficient, and own coefficient as the tabular experiment. Higher-order terms are computed by PyTorch autograd using DiCE-style surrogate losses \citep{foerster2018dice}.
+To check that the ablation is not purely tabular, we repeat IPD with a two-layer MLP policy for each agent: a 5-dimensional one-hot previous-action input, two tanh hidden layers of width 16, and one Bernoulli cooperation logit. This scales the policy from 5 tabular logits to about 385 parameters per agent. We keep the tabular budget, batch size, seed schedule, peer coefficient, and own coefficient. Higher-order terms use PyTorch autograd with DiCE-style surrogate losses \citep{foerster2018dice}.
 
 \begin{figure}[h]
   \centering
   \includegraphics[width=0.82\linewidth]{figures/mlp_ipd.pdf}
-  \caption{Non-tabular IPD check with MLP policies. Cooperative success rate on IPD with two-layer MLP policies, 100 seeds, and Wilson 95\% confidence intervals. Peer-aware methods remain above non-peer methods under the same shaping coefficients used in the tabular experiments: PG reaches $0\%$, Meta-PG $2\%$, peer-only $11\%$, and Meta-MAPG $23\%$. This is a proof-of-transport for the mechanism, not a deep-MARL benchmark.}
+  \caption{Non-tabular IPD check with MLP policies. Cooperative success rate over 100 seeds with Wilson 95\% confidence intervals. Peer-aware methods remain above non-peer methods under the same coefficients as the tabular experiments: PG reaches $0\%$, Meta-PG $2\%$, peer-only $11\%$, and Meta-MAPG $23\%$. This is a transfer check, not a deep-MARL benchmark.}
   \label{fig:mlp-ipd}
 \end{figure}
 
