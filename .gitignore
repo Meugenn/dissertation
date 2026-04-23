@@ -17,6 +17,9 @@ pytest-cache-files-*
 *.log
 *.out
 *.toc
+*.fdb_latexmk
+*.fls
+*.synctex.gz
 
 # Dissertation-specific build dirs
 dissertation/overleaf/%OUTDIR%/
