@@ -64,41 +64,26 @@
 \printAffiliationsAndNotice{}
 
 \begin{abstract}
-Policy-gradient methods converge locally near stable Nash policies in general stochastic games, but the standard theory does not anticipate opponent learning. LOLA and Meta-MAPG add gradients through other agents' future updates and change equilibrium selection in practice. We give a two-phase stochastic-approximation account of this mechanism. Phase 1 uses a constant Meta-MAPG correction as a basin-entry device; if the shaped field improves local drift by $\lambda\mu_M$, the certified entry time shrinks by the same factor. Phase 2 anneals shaping to zero, so Giannou et al.'s local theorem applies to stable Nash equilibria of the original game. Independent restarts globalise the result with an almost-sure finite-restart guarantee and a geometric tail bound. The experiments match the theorem: peer-learning changes equilibrium selection, restart budget selects equilibria, basin maps expand under opponent-aware shaping, and a small MLP IPD check shows the effect is not purely tabular.
+Multiagent reinforcement learning is difficult because each agent experiences the others as a moving target. Meta-MAPG addresses this non-stationarity by differentiating through both an agent's own future updates and the future updates of its peers, but its local stochastic-approximation status has been unclear. We study Meta-MAPG from a local convergence viewpoint. Our analysis treats the finite-unroll Meta-MAPG correction as an opponent-aware shaping field added to the base game-gradient dynamics. In phase 1, constant shaping is used only as a basin-entry mechanism: if the shaped field improves local drift by $\lambda\mu_M$, the certified entry time shrinks by the same factor. In phase 2, the shaping coefficient is annealed to zero, so the limiting ODE returns to the original game-gradient flow and Giannou et al.'s stable-Nash theorem applies. Independent restarts then globalise the local guarantee with an almost-sure finite-restart bound and a geometric tail. Experiments in Stag Hunt and iterated prisoner's dilemma match this picture: peer-learning terms drive the empirical gain, restart budget becomes equilibrium-selection budget, basin maps expand under opponent-aware shaping, and a small MLP IPD check shows the effect is not purely tabular.
 \end{abstract}
-
-\begin{table*}[t]
-  \centering
-  \caption{Positioning among opponent-aware methods. ``Nash-preserving'' means the stated theory preserves the original game's stable Nash target rather than merely optimising a shaped meta-objective.}
-  \label{tab:related}
-  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lcccc@{}}
-  \toprule
-  Method & Convergence guarantee & Shaping mechanism & Opponent model & Nash-preserving\\
-  \midrule
-  LOLA & No general & 1-step gradient & White-box & No\\
-  SOS & Differentiable games & Stable OS & White-box & SFP-focused\\
-  COLA & Simple-game stability & Consistent OS & White-box & No\\
-  POLA & Empirical/proximal & Proximal OS & Learned & Not primary\\
-  M-FOS & Empirical & Meta-policy OS & No & No\\
-  This work & Local SA + restarts & Two-phase Meta-MAPG & Sample estimates & Yes, by annealing\\
-  \bottomrule
-  \end{tabular*}
-\end{table*}
 
 \section{Introduction}
 
-Learning in stochastic games is hard because every learner changes the environment faced by the others. \citet{giannou2022convergence} prove local convergence of policy gradients to stable Nash policies under strategic stability and second-order sufficiency. This is the right baseline. It still treats opponent learning as background noise, not as a quantity to shape.
+Learning in stochastic games is hard because every learner changes the environment faced by the others. From the perspective of any single agent, the environment is therefore effectively non-stationary. \citet{giannou2022convergence} prove local convergence of policy gradients to stable Nash policies under strategic stability and second-order sufficiency. This is the right baseline for policy-gradient dynamics near a stable Nash point, but it still treats opponent learning as background variation rather than something the update itself can model.
 
-Opponent-aware policy gradients put this dependence into the update. LOLA differentiates through an opponent's anticipated step \citep{foerster2018lola,letcher2019stable}. Meta-MAPG gives three terms: the current-policy gradient, an own-learning gradient, and a peer-learning gradient for the effect of current behaviour on other agents' future policies \citep{kim2021meta}. These terms matter empirically. Their stochastic-approximation status is less clear.
+Meta-learning suggests a richer view. \citet{kim2021meta} model multiagent learning as a Markov chain of joint policy updates and derive Meta-MAPG, whose meta-gradient contains a current-policy term, an own-learning term, and a peer-learning term. This decomposition captures the fact that an agent's current behaviour changes both its own future policy and the future policies of the peers it is interacting with. Empirically, those extra terms matter. The open question is when they fit the local stochastic-approximation picture used by the standard convergence theory.
 
-We prove three claims. First, under bounded rewards, smooth policies, controlled unroll length, and standard sampling assumptions, the Meta-MAPG update is a stochastic approximation to the base game-gradient field plus controlled opponent-aware terms. Second, constant shaping and convergence need not conflict: use constant Meta-MAPG shaping only for finite-time basin entry, then anneal it so the limiting stationary points remain the stable Nash equilibria of the original game.
+Our paper takes that local question as primary. We treat the finite-unroll Meta-MAPG correction as an opponent-aware shaping field added to the base game-gradient dynamics. The central idea is to separate two roles that are often conflated. Constant shaping can be useful for finite-time basin entry and equilibrium selection, but asymptotic convergence should still target the stable Nash equilibria of the original game. We therefore analyze a two-phase schedule: a constant-shaping phase for basin entry, followed by an annealed phase that turns the limiting ODE back into the original game-gradient flow.
 
-Third, independent restarts globalise the local theorem. Local convergence depends on basin mass; normal-form games can have cycles and several attractors. With a full-support restart distribution on a compact parameter set, each epoch has a fixed positive probability of landing in the basin. This gives almost-sure finite restart success and an expected restart bound. Restart budget becomes equilibrium-selection budget. Experiments in Stag Hunt and iterated Prisoner's Dilemma test the theorem's ingredients: component ablations, restart-budget selection, basin volume, and estimator variance.
+\paragraph{Our contributions.}
+\begin{enumerate}[label=\arabic*),leftmargin=1.4em,itemsep=0.2em]
+\item \textbf{Meta-MAPG as local stochastic approximation.} Under bounded rewards, smooth policies, controlled unroll length, and standard sampling assumptions, we show that the finite-unroll Meta-MAPG update can be written as the base game-gradient field plus controlled opponent-aware terms with martingale noise and summable bias.
+\item \textbf{A two-phase local convergence picture.} We show that constant opponent-aware shaping can improve local drift and certified basin geometry around a desirable equilibrium, while an annealed second phase restores the original game's stable Nash target.
+\item \textbf{Restart-based globalisation.} We turn the local theorem into a global search statement: with positive restart mass on the basin, independent restarts yield an almost-sure finite-restart guarantee and a geometric tail bound. Restart budget becomes equilibrium-selection budget.
+\item \textbf{Theory-facing experiments.} Stag Hunt and iterated prisoner's dilemma test the mechanism predicted by the theory: peer-learning changes equilibrium selection, basin maps expand under shaping, and the two-phase schedule preserves the intended target while improving basin entry.
+\end{enumerate}
 
-\paragraph{Positioning.}
-Prior work builds opponent-shaping algorithms. LOLA differentiates through an opponent update \citep{foerster2018lola}; SOS stabilises shaping in differentiable games \citep{letcher2019stable}; COLA enforces consistency of mutual shaping \citep{willi2022cola}; POLA adds a proximal view \citep{zhao2022pola}; M-FOS learns long-horizon shaping policies without a differentiable opponent model \citep{lu2022mfos}. We ask a narrower question: when does finite-unroll Meta-MAPG fit stochastic approximation, improve basin entry, and preserve the asymptotic Nash target?
-
-\section{Setup}\label{sec:setup}
+\section{From Stochastic Games to Meta-MAPG}\label{sec:setup}
 
 \subsection{Stochastic Games}
 
@@ -130,9 +115,9 @@ whenever $\|\phi-\phi^\ast\|\le\rho$.
 
 The SOS condition is the quantitative stability condition that yields an attracting neighbourhood and a rate in \citet{giannou2022convergence}. We use it as the local anchor.
 
-\subsection{Meta-MAPG Field}
+\subsection{A Markov Chain of Joint Policies}
 
-Meta-MAPG views learning as a Markov chain of joint policy parameters $\phi_0,\ldots,\phi_L$, where each inner transition is produced by a policy-gradient update. For agent $i$, \citet{kim2021meta} decompose the meta-gradient into
+Following \citet{kim2021meta}, we view learning as a Markov chain of joint policy parameters $\phi_0,\ldots,\phi_L$, where each inner transition is produced by a policy-gradient update. For agent $i$, Meta-MAPG decomposes the meta-gradient into
 \[
 G_i^{\mathrm{MAPG}}
 =G_i^{\mathrm{cur}}+G_i^{\mathrm{own}}+G_i^{\mathrm{peer}}.
@@ -159,7 +144,7 @@ Let $U$ be a neighbourhood of a stable Nash set $\N$ of the base game-gradient f
 so the limiting ODE on $U$ is $\dot\phi=v(\phi)$, or else its non-vanishing limit field $v+M$ has exactly the same isolated SOS equilibria in $U$ as $v$ with the same local attracting neighbourhoods. The convergence theorem uses the first, annealed case; the second case only records when constant shaping is locally equilibrium-preserving.
 \end{definition}
 
-\section{Assumptions}\label{sec:assumptions}
+\section{Local Assumptions}\label{sec:assumptions}
 
 The assumptions separate standard stochastic approximation from the Meta-MAPG estimator step.
 
@@ -205,7 +190,7 @@ The stable set $\N$ consists of isolated SOS Nash equilibria satisfying \cref{de
 The convergence target is the original game's stable Nash set $\N$. If shaping is kept constant, meta-objectives can have non-Nash fixed points. The theorem is therefore annealed, or explicitly equilibrium-preserving. Constant shaping is used for finite-time basin geometry in \cref{prop:basin}, not to claim that arbitrary meta-game stationary points are Nash.
 \end{remark}
 
-\section{Main Result}\label{sec:main}
+\section{Local Meta-MAPG with Restarts}\label{sec:main}
 
 \begin{lemma}[Estimator decomposition and noise control]\label{lem:decomp}
 Under bounded rewards, twice differentiable policies with bounded score and Hessian on $\K$, and finite second moments of the likelihood-ratio estimators, the finite-unroll Meta-MAPG estimator satisfies \cref{as:decomp}. In particular, the current-policy, own-learning, and peer-learning components can each be written as a conditional mean plus a martingale-difference error; finite unroll and opponent-modeling truncation contribute the bias $b_n$.
@@ -274,7 +259,7 @@ Thus, after finitely many restarts, the process enters an epoch where the local 
 The $(R/\rho)^d$ bound is worst-case for uniform $\nu$; the empirical $\E[T]\approx 1.24$ in Stag Hunt (\cref{sec:experiments}) reflects a non-uniform, near-warm-start restart distribution that concentrates mass in the cooperative basin rather than any tightness of the bound.
 \end{remark}
 
-\section{Proof Sketch}\label{sec:proof}
+\section{Why the Theory Works}\label{sec:proof}
 
 \paragraph{Step 1: estimator decomposition.}
 This is the Meta-MAPG-specific step. The theorem of \citet{kim2021meta} splits the sampled gradient into current, own-learning, and peer-learning score-function terms. Bounded rewards and scores give finite conditional variance; subtracting the conditional mean gives martingale noise. Finite unrolls and approximate opponent models give the bias $b_n$, controlled by \cref{as:trunc}.
@@ -290,6 +275,31 @@ Map the Meta-MAPG update to Giannou et al.'s local PG template. In the annealed 
 
 \paragraph{Step 5: restart globalisation.}
 Restarts globalise the local result by a geometric argument. Each epoch is independent. The restart distribution assigns mass $p_\rho$ to the phase-1 region, and the two-phase theorem reaches phase 2 with probability at least $1-\delta$. Each epoch therefore succeeds with probability at least $p_\rho(1-\delta)$. The first successful epoch is geometrically dominated. Basin maps in \cref{sec:experiments} show how opponent-aware shaping can improve this constant by increasing basin-entry probability.
+
+\section{Related Work}\label{sec:related}
+
+\paragraph{Positioning.}
+Prior work builds opponent-shaping algorithms. LOLA differentiates through an opponent update \citep{foerster2018lola}; SOS stabilises shaping in differentiable games \citep{letcher2019stable}; COLA enforces consistency of mutual shaping \citep{willi2022cola}; POLA adds a proximal view \citep{zhao2022pola}; M-FOS learns long-horizon shaping policies without a differentiable opponent model \citep{lu2022mfos}. Our paper sits closest to \citet{kim2021meta}: we inherit the current/own/peer decomposition and ask a narrower question, namely when finite-unroll Meta-MAPG fits stochastic approximation, improves basin entry, and preserves the asymptotic Nash target.
+
+\begin{table*}[t]
+  \centering
+  \caption{Positioning among opponent-aware methods. ``Nash-preserving'' means the stated theory preserves the original game's stable Nash target rather than merely optimising a shaped meta-objective.}
+  \label{tab:related}
+  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lcccc@{}}
+  \toprule
+  Method & Convergence guarantee & Shaping mechanism & Opponent model & Nash-preserving\\
+  \midrule
+  LOLA & No general & 1-step gradient & White-box & No\\
+  SOS & Differentiable games & Stable OS & White-box & SFP-focused\\
+  COLA & Simple-game stability & Consistent OS & White-box & No\\
+  POLA & Empirical/proximal & Proximal OS & Learned & Not primary\\
+  M-FOS & Empirical & Meta-policy OS & No & No\\
+  This work & Local SA + restarts & Two-phase Meta-MAPG & Sample estimates & Yes, by annealing\\
+  \bottomrule
+  \end{tabular*}
+\end{table*}
+
+Kim et al. study Meta-MAPG as a general meta-learning algorithm for rapid adaptation in mixed-incentive, competitive, and cooperative environments. Our focus is narrower and more local: we isolate the stochastic-approximation structure needed for convergence, make the basin-shaping role of the peer term explicit, and use restarts as the mechanism that turns a local theorem into an equilibrium-search statement.
 
 \section{Experiments}\label{sec:experiments}
 
