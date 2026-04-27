@@ -957,12 +957,28 @@ def plot_restart_selection(selection: pd.DataFrame, outdir: Path) -> None:
     inset = ax.inset_axes([0.54, 0.17, 0.41, 0.34])
     for method in ["standard_pg", "meta_mapg"]:
         sub = selection[selection["method"] == method]
-        area = sub.groupby("budget")["cumulative_welfare_gap"].mean().reset_index()
-        inset.plot(
-            area["budget"],
-            area["cumulative_welfare_gap"],
+        area = (
+            sub.groupby("budget")
+            .agg(
+                mean_gap=("cumulative_welfare_gap", "mean"),
+                sem_gap=(
+                    "cumulative_welfare_gap",
+                    lambda x: float(np.std(x, ddof=1) / np.sqrt(len(x))) if len(x) > 1 else 0.0,
+                ),
+            )
+            .reset_index()
+        )
+        x = area["budget"].to_numpy(dtype=float)
+        y = area["mean_gap"].to_numpy(dtype=float)
+        sem = area["sem_gap"].to_numpy(dtype=float)
+        inset.plot(x, y, color=colors[method], linewidth=1.5)
+        inset.fill_between(
+            x,
+            y - 1.96 * sem,
+            y + 1.96 * sem,
             color=colors[method],
-            linewidth=1.5,
+            alpha=0.18,
+            linewidth=0,
         )
     inset.set_title("Area gap (lower better)", fontsize=7)
     inset.tick_params(labelsize=7)

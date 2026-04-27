@@ -21,8 +21,16 @@
   urlcolor=blue!50!black
 }
 
+\theoremstyle{plain}
 \newtheorem{theorem}{Theorem}
-\newtheorem{corollary}{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{assumption}{Assumption}
+\newtheorem{definition}[theorem]{Definition}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
 
 \newcommand{\E}{\mathbb{E}}
 \newcommand{\KL}{D_{\mathrm{KL}}}
@@ -33,6 +41,7 @@
 \newcommand{\meta}{\mathrm{meta}}
 \newcommand{\LoRA}{\mathrm{LoRA}}
 \newcommand{\RESULTPENDING}{\textcolor{red!70!black}{\textbf{RESULT PENDING}}}
+\DeclareMathOperator*{\esssup}{ess\,sup}
 
 \icmltitlerunning{Meta-SWAG}
 
@@ -232,77 +241,216 @@ In MARL the relevant object is the joint policy, not a bag of isolated marginals
 
 \section{Theory}
 
-\subsection{Variance Reduction Through Bayesian Model Averaging}
+Throughout Section~4 we work under Assumptions (A1)--(A5) of Section~2.3. These place the retained checkpoint sequence $\{\vartheta_k\}_{k=1}^K \subset \Theta$ inside a compact stable region $\mathcal{R}$, with a geometrically mixing time-homogeneous Markov checkpoint process, a local first-order linearization of the update operator $\mathcal{T}$, and strictly positive normalized weights $\{w_k\}_{k=1}^K$ satisfying $\sum_{k=1}^K w_k = 1$.
 
-\paragraph{Assumption: Evidence-variance alignment.}
-For the retained checkpoints, suppose the weighting rule is monotone in an evidence score $m_t$ and that higher evidence corresponds to lower checkpoint-level predictive variance, i.e., $m_t \ge m_s \Rightarrow V_t \le V_s$. This is an idealized assumption, not a generic property of arbitrary validation metrics.
+\subsection{Predictive Variance: Setup}\label{sec:predvar-setup}
 
-\begin{theorem}[Idealized variance reduction under evidence-variance alignment]
-Let $q_T$ be the Meta-SWAG posterior constructed from retained checkpoints satisfying Assumptions (A1)--(A5), and let $\bar{\pi}_{q_T}$ denote the posterior predictive policy. Under evidence-variance alignment, the within-checkpoint component of the predictive variance of $\bar{\pi}_{q_T}$ is bounded by the corresponding uniformly weighted checkpoint average up to the harmonic-to-arithmetic mean ratio of checkpoint variances:
-\begin{equation}
-\Var_{\mathrm{within}}(\bar{\pi}_{q_T})
-\leq
-\frac{\HM(V_1,\ldots,V_K)}{\AM(V_1,\ldots,V_K)}
-\Var_{\mathrm{within}}(\pi_{\mathrm{unif}})
-\leq
-\Var_{\mathrm{within}}(\pi_{\mathrm{unif}}),
+Let $(\mathcal{X},\mathcal{F}_\mathcal{X})$ and $(\mathcal{Y},\mathcal{F}_\mathcal{Y})$ be measurable input and output spaces. Each checkpoint $\vartheta_k$ parameterizes a conditional policy
+\[
+\pi_{\vartheta_k}:\; \mathcal{X} \to \Delta(\mathcal{Y}), \qquad x \mapsto \pi_{\vartheta_k}(\,\cdot\mid x),
+\]
+where $\Delta(\mathcal{Y})$ is the space of probability measures on $\mathcal{Y}$. Fix a measurable statistic of interest $f:\mathcal{Y}\to\mathbb{R}$ (e.g.\ a scalar policy output, an action-value, or a reward surrogate) with $\E\bigl[f(Y)^2 \mid \vartheta_k, x\bigr] < \infty$ for each $k$ and almost every $x$. Define the checkpoint-level conditional mean and variance
+\[
+\mu_k(x) \;:=\; \E\bigl[f(Y)\mid Y\sim\pi_{\vartheta_k}(\cdot\mid x)\bigr], \qquad
+V_k(x) \;:=\; \Var\bigl[f(Y)\mid Y\sim\pi_{\vartheta_k}(\cdot\mid x)\bigr],
+\]
+and, for a reference input distribution $X\sim\mathcal{D}$,
+\[
+V_k \;:=\; \E_{X\sim\mathcal{D}}[V_k(X)] \;>\; 0.
+\]
+The discrete posterior predictive used for model averaging is $\bar{\pi}_{q_T}(\cdot\mid x) := \sum_{k=1}^K w_k\,\pi_{\vartheta_k}(\cdot\mid x)$, and the uniformly weighted ensemble $\pi_{\mathrm{unif}}$ corresponds to $w_k\equiv 1/K$. The law of total variance applied to $Y$ under $k\sim\mathrm{Cat}(w)$, $Y\sim\pi_{\vartheta_k}(\cdot\mid x)$ yields the decomposition
+\begin{equation}\label{eq:lotv}
+\Var_{\bar{\pi}_{q_T}}\!\bigl[f(Y)\mid x\bigr] \;=\;
+\underbrace{\sum_{k=1}^K w_k V_k(x)}_{\Var_{\mathrm{within}}(\bar{\pi}_{q_T}\mid x)}
+\;+\;
+\underbrace{\sum_{k=1}^K w_k \Bigl(\mu_k(x) - \sum_{j=1}^K w_j \mu_j(x)\Bigr)^{2}}_{\Var_{\mathrm{between}}(\bar{\pi}_{q_T}\mid x)}.
 \end{equation}
-where $V_k$ denotes checkpoint-level predictive variance and $\pi_{\mathrm{unif}}$ denotes the uniformly weighted checkpoint ensemble. If the between-checkpoint term remains controlled inside one stable region, this also yields a reduction relative to nearby point estimates.
+Writing $\Var_{\mathrm{within}}(\bar{\pi}_{q_T}) := \sum_{k=1}^K w_k V_k$ (after averaging over $X\sim\mathcal{D}$), Theorem~\ref{thm:var} controls this within-checkpoint component. For any $K$-tuple of positive reals $V = (V_1,\ldots,V_K)$ we write
+\[
+\AM(V) \;:=\; \frac{1}{K}\sum_{k=1}^K V_k, \qquad
+\HM(V) \;:=\; \Bigl(\frac{1}{K}\sum_{k=1}^K V_k^{-1}\Bigr)^{-1},
+\]
+for the arithmetic and harmonic means of $V$.
+
+\subsection{Variance Reduction through Bayesian Model Averaging}
+
+We first state the alignment condition that replaces the implicit rearrangement used in an earlier draft.
+
+\begin{assumption}[Evidence--variance alignment]\label{as:evar}
+There exists a permutation $\sigma$ of $\{1,\dots,K\}$ under which the weights and checkpoint-level variances are oppositely monotone:
+\[
+V_{\sigma(1)} \le V_{\sigma(2)} \le \cdots \le V_{\sigma(K)}
+\qquad\text{and}\qquad
+w_{\sigma(1)} \ge w_{\sigma(2)} \ge \cdots \ge w_{\sigma(K)}.
+\]
+Equivalently, $(w_k)$ and $(V_k)$ are oppositely ordered in the sense of Chebyshev.
+\end{assumption}
+
+Assumption~\ref{as:evar} is idealized: it asserts that evidence scoring tracks ground-truth predictive variance rankwise. It is not a generic property of arbitrary held-out metrics and must be checked per application.
+
+\begin{theorem}[Variance reduction under evidence--variance alignment]\label{thm:var}
+Let $\bar{\pi}_{q_T}$ be the Meta-SWAG posterior predictive policy built from retained checkpoints $\{\vartheta_k\}_{k=1}^K$ with positive normalized weights $\{w_k\}_{k=1}^K$, and let $\pi_{\mathrm{unif}}$ be the uniformly weighted checkpoint ensemble. Assume $V_k > 0$ for all $k$.
+\begin{enumerate}[leftmargin=1.8em,itemsep=0.2em,label=\textup{(\alph*)}]
+  \item \textup{(Monotone-weighting bound.)} Under Assumption~\ref{as:evar},
+  \begin{equation}\label{eq:am-bound}
+  \Var_{\mathrm{within}}(\bar{\pi}_{q_T})
+  \;=\; \sum_{k=1}^K w_k V_k
+  \;\le\; \AM(V)
+  \;=\; \Var_{\mathrm{within}}(\pi_{\mathrm{unif}}).
+  \end{equation}
+  \item \textup{(Optimal inverse-variance weighting.)} If in addition $w_k = V_k^{-1}/\sum_{j=1}^K V_j^{-1}$, then
+  \begin{equation}\label{eq:hm-bound}
+  \Var_{\mathrm{within}}(\bar{\pi}_{q_T}) \;=\; \HM(V) \;\le\; \AM(V),
+  \end{equation}
+  with equality in the second inequality iff $V_1 = \cdots = V_K$. Consequently the improvement factor $\HM(V)/\AM(V) \in (0,1]$ quantifies the maximum gain attainable by inverse-variance weighting.
+\end{enumerate}
 \end{theorem}
 
-\paragraph{Proof sketch.}
-The predictive variance of the Bayesian model average decomposes into a within-checkpoint term and a between-checkpoint term. Under evidence-variance alignment, monotone evidence weighting assigns larger mass to lower-variance checkpoints, so the within-checkpoint term is controlled by the harmonic mean rather than the arithmetic mean. The argument mirrors the AM-HM improvement from evidence-weighted policy gradients, but the random object is now the posterior predictive policy rather than the gradient estimator. Extending the comparison from a uniformly weighted ensemble to a single point estimate requires the additional single-region control stated above.
+\begin{proof}
+(a) Since $(w_k)$ and $(V_k)$ are oppositely ordered, Chebyshev's sum inequality \citep[\S2.17]{HardyLittlewoodPolya1952} applied to $a_k = V_k$ and $b_k = w_k$ gives
+\[
+K\sum_{k=1}^K w_k V_k \;\le\; \Bigl(\sum_{k=1}^K V_k\Bigr)\Bigl(\sum_{k=1}^K w_k\Bigr)
+\;=\; K\cdot\AM(V)\cdot 1,
+\]
+which on dividing by $K$ yields~\eqref{eq:am-bound}. The uniform case gives $\sum_k (1/K) V_k = \AM(V)$.
 
-\begin{corollary}[Alignment]
-Assume in addition that, on the retained LoRA posterior support, the best-of-$n$ proxy-gold reward gap is locally upper-bounded by a monotone function of a predictive-dispersion functional that is itself controlled by the within-checkpoint predictive variance. Then any Meta-SWAG weighting rule that strictly reduces the within-checkpoint predictive variance also weakly reduces that local upper bound on reward overoptimization relative to the corresponding point-estimate or uniform-ensemble baseline.
+(b) With $S := \sum_{j=1}^K V_j^{-1}$ and $w_k = V_k^{-1}/S$,
+\[
+\sum_{k=1}^K w_k V_k \;=\; \frac{1}{S}\sum_{k=1}^K V_k^{-1} V_k \;=\; \frac{K}{S} \;=\; \HM(V).
+\]
+The AM--HM inequality \citep[\S2.5]{HardyLittlewoodPolya1952} gives $\HM(V)\le\AM(V)$ with equality iff all $V_k$ are equal.
+\end{proof}
+
+\begin{remark}[Correction relative to earlier draft]\label{rem:var-correction}
+An earlier version of this result claimed
+$\Var_{\mathrm{within}}(\bar{\pi}_{q_T}) \le \bigl(\HM(V)/\AM(V)\bigr)\,\Var_{\mathrm{within}}(\pi_{\mathrm{unif}})$ under any monotone evidence weighting. Chebyshev's sum inequality alone yields only~\eqref{eq:am-bound}; the $\HM$ bound~\eqref{eq:hm-bound} is the special case of equality under inverse-variance weighting. Theorem~\ref{thm:var} states each bound with its correct hypothesis.
+\end{remark}
+
+\begin{remark}[Point-estimate comparison]
+Theorem~\ref{thm:var} controls only the within-checkpoint term of~\eqref{eq:lotv}. Comparison to a single point estimate additionally requires the between-checkpoint term to remain bounded, which holds when the retained trajectory stays inside one stable region (Assumption~A2), so that $\sup_{j,k}\|\mu_j(x)-\mu_k(x)\|$ is controlled uniformly over the region.
+\end{remark}
+
+\begin{corollary}[Conditional alignment bound]\label{cor:align-var}
+Suppose there exist non-decreasing functions $\Phi,g:[0,\infty)\to[0,\infty)$ and a predictive-dispersion functional $\mathcal{D}(\cdot)$ on $\Delta(\mathcal{Y})^\mathcal{X}$ such that, on the retained LoRA posterior support, the best-of-$n$ proxy--gold reward gap $G_n$ satisfies
+\[
+G_n \;\le\; \Phi\!\bigl(\mathcal{D}(\bar{\pi}_{q_T})\bigr), \qquad
+\mathcal{D}(\bar{\pi}_{q_T}) \;\le\; g\!\bigl(\Var_{\mathrm{within}}(\bar{\pi}_{q_T})\bigr).
+\]
+Then any weighting rule that strictly reduces $\Var_{\mathrm{within}}$ weakly reduces the local upper bound $\Phi\!\circ\! g$ on $G_n$ relative to the point-estimate or uniform-ensemble baseline.
 \end{corollary}
 
-\paragraph{Significance.}
-The theorem itself is only a variance statement. The alignment corollary is useful only after adding an explicit bridge from predictive dispersion to proxy-gold reward gap, which is exactly the step the empirical protocol must test rather than assume.
+\begin{remark}[Conditionality]
+Corollary~\ref{cor:align-var} is a \emph{conditional} statement: the bridge $(\Phi,g,\mathcal{D})$ from predictive dispersion to the proxy--gold reward gap is an empirical claim that must be validated, not assumed.
+\end{remark}
 
-\subsection{Posterior Covariance as Basin Geometry}
+\subsection{Posterior Covariance as Basin Geometry}\label{sec:geom}
 
-\begin{theorem}[Posterior covariance identifies local trajectory geometry]
-Suppose the retained trajectory remains in a stable local region of the adaptive optimization process, the dynamics admit a local linearization in that region, and the retained checkpoint process is geometrically mixing. Then, as $T \to \infty$, the Meta-SWAG covariance $\Sigma_T$ converges to a matrix whose leading eigenspaces agree with the dominant weakly-curved directions of the local trajectory geometry, while concentration in sharper directions scales with the local second-order structure of the effective objective.
+On the stable region $\mathcal{R}$, suppose the update operator admits the first-order expansion
+\begin{equation}\label{eq:linearization}
+\vartheta_{t+1} - \theta^\ast \;=\; J(\vartheta_t - \theta^\ast) + \Xi_{t+1},
+\end{equation}
+around a fixed point $\theta^\ast\in\mathcal{R}$, with contraction matrix $J\in\mathbb{R}^{d\times d}$ satisfying spectral radius $\rho(J)<1$, and with innovations $\{\Xi_t\}$ that are martingale differences relative to the natural filtration, uniformly square-integrable, and stationary with covariance $Q := \lim_{t\to\infty}\E[\Xi_{t+1}\Xi_{t+1}^\top]$. Under these conditions, the stationary parameter covariance $\Sigma_\infty$ of $\{\vartheta_t\}$ exists and is the unique positive semidefinite solution of the discrete Lyapunov equation
+\begin{equation}\label{eq:lyap}
+\Sigma_\infty \;=\; J\,\Sigma_\infty\,J^\top + Q.
+\end{equation}
+
+\begin{theorem}[Posterior covariance identifies local trajectory geometry]\label{thm:geom}
+Suppose:
+\begin{enumerate}[leftmargin=1.8em,itemsep=0.2em,label=\textup{(\roman*)}]
+  \item the retained trajectory remains in the stable region $\mathcal{R}$ (A2);
+  \item the local linearization~\eqref{eq:linearization} holds with $\rho(J)<1$ and stationary innovation covariance $Q$ (A4);
+  \item the retained checkpoint process is geometrically mixing (A3) and has bounded fourth moments (A2);
+  \item the top-$r$ eigenvalues of $\Sigma_\infty$ are distinct:
+  $\lambda_1(\Sigma_\infty) > \lambda_2(\Sigma_\infty) > \cdots > \lambda_r(\Sigma_\infty) > \lambda_{r+1}(\Sigma_\infty)$ \textup{(eigenvalue-gap condition).}
+\end{enumerate}
+Let $\Sigma_T = \tfrac{1}{2}\diag(v_T) + \tfrac{1}{2(|\mathcal{J}_T|-1)}D_T D_T^\top$ be the Meta-SWAG covariance estimator of Section~3.1, and let $u_i(M)$ denote the $i$-th leading unit eigenvector of a symmetric matrix $M$.
+\begin{enumerate}[leftmargin=1.8em,itemsep=0.2em,label=\textup{(\alph*)}]
+  \item $\Sigma_T \xrightarrow{\;a.s.\;} \Sigma_\infty$ in operator norm as $T\to\infty$.
+  \item Under \textup{(iv)}, for each $i\in\{1,\dots,r\}$ there is a sign choice such that $u_i(\Sigma_T) \xrightarrow{\;a.s.\;} u_i(\Sigma_\infty)$.
+  \item Without \textup{(iv)}, the conclusion in \textup{(b)} weakens to convergence of the top-$r$ invariant subspace in the $\sin\Theta$ metric: $\|\sin\Theta\bigl(\mathrm{span}\{u_1,\dots,u_r\}(\Sigma_T),\mathrm{span}\{u_1,\dots,u_r\}(\Sigma_\infty)\bigr)\|\to 0$ almost surely \textup{\citep{DavisKahan1970}}.
+\end{enumerate}
 \end{theorem}
 
-\paragraph{Proof sketch.}
-Near a stable local region, the adaptive dynamics admit a local linearization whose covariance is governed by the Jacobian and Hessian of the effective objective along the trajectory. The diagonal-plus-low-rank estimator is consistent for the dominant second-moment structure of this local process. Geometric mixing ensures that the checkpoint buffer estimates local covariance rather than transient drift between unrelated regions. The leading eigenvectors therefore align with soft directions of the local orbit or basin, while narrow directions shrink under repeated averaging.
+\begin{proof}[Proof sketch]
+Under the local linearization~\eqref{eq:linearization}, $\{\vartheta_t\}$ is a geometrically ergodic VAR(1) process with unique stationary distribution of covariance $\Sigma_\infty$ solving~\eqref{eq:lyap}. Assumption (iii) and the bounded fourth moments in (A2) imply that the weighted first moment $\mu_T\to\E_\infty[\vartheta]=\theta^\ast$ and the weighted second moments in both $\diag(v_T)$ and $D_T D_T^\top$ are consistent for the corresponding entries of $\Sigma_\infty$ by the strong law for geometrically mixing sequences with positive bounded weights \citep{maddox2019swag}. Combining the two components recovers $\Sigma_\infty$ in operator norm, proving (a). Part (b) follows from (a) by the Davis--Kahan $\sin\Theta$ theorem under the gap condition (iv), specialized to individual eigenvectors; part (c) is the unconditional eigenspace version.
+\end{proof}
 
-\begin{corollary}[Conditional diagnostic interpretation under subspace-sensitive shift]
-Assume additionally that deployment shift perturbs model behavior primarily through the retained LoRA subspace and that out-of-distribution loss increase is controlled by perturbation energy projected onto the leading eigenspaces of $\Sigma_T$. Then a spiked spectrum in $\Sigma_T$ is consistent with increased sensitivity to shifts aligned with that narrow adapter subspace, whereas a flatter spectrum is consistent with more distributed local robustness.
-\end{corollary}
+\begin{remark}[Correction relative to earlier draft]
+The earlier statement omitted the eigenvalue-gap condition (iv). Without it, individual eigenvectors need not be uniquely defined in the limit; only the invariant subspace spanned by the top-$r$ eigenvectors is. Theorem~\ref{thm:geom}(c) gives the correct unconditional conclusion.
+\end{remark}
 
-\paragraph{Significance.}
-Meta-SWAG turns posterior covariance into an interpretable object: it is not just uncertainty mass, but a compressed summary of local trajectory geometry. Any deployment-robustness interpretation requires an extra assumption linking distribution shift to that geometry.
+\begin{remark}[Diagnostic interpretation under subspace-sensitive shift]\label{rem:diag}
+If additionally
+\begin{enumerate}[leftmargin=1.8em,itemsep=0.15em,label=\textup{(\roman*$^\prime$)}]
+  \item a deployment shift $\Delta\in\mathbb{R}^d$ perturbs policy behavior primarily through its projection onto the retained LoRA subspace, and
+  \item out-of-distribution loss increase is upper-bounded by a non-decreasing function of $\|P_r\Delta\|^2$, where $P_r$ is the projector onto the top-$r$ eigenspace of $\Sigma_T$,
+\end{enumerate}
+then a \emph{spiked} spectrum of $\Sigma_T$ is \emph{consistent with} increased sensitivity to shifts aligned with the narrow adapter subspace, while a \emph{flatter} spectrum is consistent with more distributed local robustness. This is an interpretive remark, not a derived inequality; it relies on the empirical bridges (i$^\prime$)--(ii$^\prime$) and does not follow from Theorem~\ref{thm:geom} alone. The earlier draft labelled this statement as a Corollary of Theorem~2, which overstated its logical status; we state it here as a Remark.
+\end{remark}
 
-\subsection{Conceptual Limit: Self-Knowledge Bottlenecks Posterior Quality}
+\subsection{Self-Knowledge Bottleneck}\label{sec:self}
 
-The next result is intentionally more interpretive than the first two. It does not characterize the implemented weighting rule directly; instead it formalizes a limitation principle for posterior predictors built from an explicit self-model $\tilde{\pi}$ of the policy being updated.
+This subsection formalizes a ceiling on posterior quality set by the quality of an explicit \emph{self-model} $\tilde\pi$ used by the updater.
 
-\begin{theorem}[Conceptual self-knowledge bound under an explicit self-model]
-Let $\pi_\theta$ be the true policy at checkpoint $\theta$, let $\tilde{\pi}_\theta$ be the optimizer's self-model of that policy, and let $\hat{\pi}_{q_T}=\E_{\theta' \sim q_T}[\tilde{\pi}_{\theta'}]$ be the policy induced by the Meta-SWAG posterior predictive. If
-\begin{equation}
-C := \sup_x \left| \log \frac{\tilde{\pi}_\theta(x)}{\hat{\pi}_{q_T}(x)} \right| < \infty,
+\paragraph{Notation.} Suppress the input $x\in\mathcal{X}$ and work pointwise at a fixed $x$. Let
+\begin{itemize}[leftmargin=1.5em,itemsep=0.1em]
+  \item $\pi_\theta\in\Delta(\mathcal{Y})$ be the \emph{true} policy at parameter $\theta$, with density $\pi_\theta(y)$ w.r.t.\ a dominating reference measure $\nu$ on $\mathcal{Y}$;
+  \item $\tilde\pi_\theta\in\Delta(\mathcal{Y})$ be the optimizer's \emph{self-model} used when computing its gradient or preference signal;
+  \item $q_T$ be the Meta-SWAG posterior on $\Theta$, and
+  \[
+  \hat\pi_{q_T}(y) \;:=\; \E_{\theta'\sim q_T}\bigl[\tilde\pi_{\theta'}(y)\bigr]
+  \]
+  the induced posterior predictive (note: this mixes the \emph{self-models}, not the true policies).
+\end{itemize}
+Define the self-knowledge gap
+\[
+L_{\mathrm{self}}(\theta) \;:=\; \KL\!\bigl(\pi_\theta \,\big\|\, \tilde\pi_\theta\bigr)
+\;=\; \int_\mathcal{Y} \pi_\theta(y)\,\log\!\frac{\pi_\theta(y)}{\tilde\pi_\theta(y)}\,\mathrm{d}\nu(y).
+\]
+
+\begin{theorem}[Self-knowledge bound under an explicit self-model]\label{thm:self}
+Assume $\pi_\theta, \tilde\pi_\theta, \hat\pi_{q_T}$ are mutually absolutely continuous w.r.t.\ $\nu$, and that the log-ratio of the self-model to the posterior predictive is uniformly bounded:
+\begin{equation}\label{eq:C}
+C \;:=\; \esssup_{y\in\mathcal{Y}} \log \frac{\tilde\pi_\theta(y)}{\hat\pi_{q_T}(y)} \;<\; +\infty.
 \end{equation}
-then
-\begin{equation}
-\KL(\pi_\theta \,\|\, \hat{\pi}_{q_T})
-\leq
-\left(1 + \frac{C^2}{2}\right)L_{\mathrm{self}}(\theta) + O(T^{-1}),
+Assume further (A1)--(A3), so that the Meta-SWAG moment estimators underlying $q_T$ satisfy the geometric-mixing central limit theorem with $O(T^{-1})$ second-moment approximation error. Then
+\begin{equation}\label{eq:self}
+\KL\!\bigl(\pi_\theta \,\big\|\, \hat\pi_{q_T}\bigr) \;\le\; L_{\mathrm{self}}(\theta) \;+\; C \;+\; O(T^{-1}).
 \end{equation}
-where $L_{\mathrm{self}}(\theta):=\KL(\pi_\theta \,\|\, \tilde{\pi}_\theta)$ is the self-knowledge gap.
 \end{theorem}
 
-\paragraph{Proof sketch.}
-Decompose $\KL(\pi_\theta \,\|\, \hat{\pi}_{q_T})$ into $\KL(\pi_\theta \,\|\, \tilde{\pi}_\theta)$ plus a cross term involving $\log(\tilde{\pi}_\theta / \hat{\pi}_{q_T})$. Bound the cross term by a change-of-measure argument and Pinsker's inequality, then use Young's inequality to isolate the residual into a multiplicative constant on $L_{\mathrm{self}}$. The remaining $O(T^{-1})$ term is the usual finite-sample error from the SWAG moment approximation along a mixing Markovian checkpoint trajectory.
+\begin{proof}
+By absolute continuity, insert $\tilde\pi_\theta$ into the log-ratio:
+\begin{align*}
+\KL\!\bigl(\pi_\theta \,\big\|\, \hat\pi_{q_T}\bigr)
+&= \E_{Y\sim\pi_\theta}\!\left[\log\frac{\pi_\theta(Y)}{\hat\pi_{q_T}(Y)}\right] \\
+&= \underbrace{\E_{Y\sim\pi_\theta}\!\left[\log\frac{\pi_\theta(Y)}{\tilde\pi_\theta(Y)}\right]}_{=\, L_{\mathrm{self}}(\theta)}
+\;+\; \underbrace{\E_{Y\sim\pi_\theta}\!\left[\log\frac{\tilde\pi_\theta(Y)}{\hat\pi_{q_T}(Y)}\right]}_{\le\, C \text{ by \eqref{eq:C}}}.
+\end{align*}
+The cross term is bounded pointwise by $C$ via~\eqref{eq:C}, hence in expectation under any law, including $\pi_\theta$. Adding the $O(T^{-1})$ finite-sample error from the Meta-SWAG moment estimators, which holds under geometric mixing (A3) \citep{maddox2019swag}, yields~\eqref{eq:self}.
+\end{proof}
 
-\begin{corollary}[Alignment]
-Let $\pi$ be the base LLM policy, $\tilde{\pi}$ the aligner's internal model of the base policy, and $\hat{\pi}_{q_T}$ the aligned posterior predictive policy. Then alignment quality, measured as $\KL(\pi \,\|\, \hat{\pi}_{q_T})$, is upper-bounded by the aligner's self-knowledge of the base model up to the constant above. Read operationally, this means posterior averaging cannot compensate arbitrarily for a poor internal model of the policy being aligned.
+\begin{remark}[Corrections relative to earlier draft]\label{rem:self-corrections}
+Four issues in the earlier statement are addressed here.
+\begin{enumerate}[leftmargin=1.8em,itemsep=0.15em,label=\textup{(\arabic*)}]
+  \item \emph{Notation.} The earlier draft wrote $\pi_{q_T}(x)$ in the denominator of the log-ratio defining $C$; this conflicts with the definition $\hat\pi_{q_T} := \E_{\theta'\sim q_T}[\tilde\pi_{\theta'}]$. Equation~\eqref{eq:C} uses the consistent $\hat\pi_{q_T}$.
+  \item \emph{Form of the bound.} The earlier draft asserted a multiplicative form $\KL(\pi_\theta\|\hat\pi_{q_T}) \le (1+C^2/2)L_{\mathrm{self}}(\theta) + O(T^{-1})$. The decomposition in the proof supports only an \emph{additive} bound: the cross term is controlled pointwise by $C$, not by a multiple of $L_{\mathrm{self}}$. A Young's-inequality argument applied to any product involving $L_{\mathrm{self}}$ would still produce an additive combination of the form $\alpha L_{\mathrm{self}} + C^2/(4\alpha)$. A multiplicative bound in $L_{\mathrm{self}}$ alone requires an \emph{a priori} relationship between $C$ and $L_{\mathrm{self}}$ not assumed here. Equation~\eqref{eq:self} is the correct additive bound.
+  \item \emph{Rate assumption.} The $O(T^{-1})$ rate is now stated as a consequence of geometric mixing (A3), rather than asserted unconditionally.
+  \item \emph{Exposition.} A column-extraction artefact in the earlier PDF interleaved the Figure~2 caption inside the proof; these are separated here.
+\end{enumerate}
+\end{remark}
+
+\begin{corollary}[Alignment under self-knowledge]\label{cor:self-align}
+Let $\theta_0\in\Theta$ be a reference pre-alignment checkpoint. Identify $\pi := \pi_{\theta_0}$ as the base LLM policy and $\tilde\pi := \tilde\pi_{\theta_0}$ as the aligner's internal model of the base policy. Let $\hat\pi_{q_T}$ be the aligned posterior predictive. Assume the hypotheses of Theorem~\ref{thm:self} with $\theta = \theta_0$. Then
+\[
+\KL\!\bigl(\pi_{\theta_0} \,\big\|\, \hat\pi_{q_T}\bigr) \;\le\; L_{\mathrm{self}}(\theta_0) \;+\; C \;+\; O(T^{-1}).
+\]
+In particular, posterior averaging cannot asymptotically compensate for a poor internal model of the policy being aligned: the ceiling is $L_{\mathrm{self}}(\theta_0)+C$.
 \end{corollary}
 
-\paragraph{Significance.}
-The theorem identifies a limitation principle for adaptive systems: better uncertainty estimates cannot outrun a poor internal model of the policy being updated. Its practical force depends on whether one can estimate or upper-bound the self-knowledge gap in real aligners, which the current draft does not yet do for DPO, PPO, or GRPO.
+\begin{remark}[Practical force]
+Theorem~\ref{thm:self} is a limitation principle. Its operational force depends on whether $L_{\mathrm{self}}(\theta_0)$ and $C$ can be estimated or bounded in concrete aligners (DPO, PPO, GRPO); the current draft does not supply such estimates and marks this as an open empirical question.
+\end{remark}
 
 \section{Experiments}
 
@@ -372,7 +520,7 @@ The third thread is Bayesian alignment. Reward-model posteriors and Laplace-styl
 
 Meta-SWAG is deliberately modest about what it approximates. The posterior is Gaussian, which is unlikely to be adequate when alignment basins are genuinely bimodal or when policy trajectories move between distant equilibria. Markovianity alone is not enough to justify the approximation: the argument also needs retention inside a stable, mixing region where late-trajectory moments are informative. The covariance interpretation is strongest near convergence, where the local second-order story is meaningful; earlier in training, the low-rank factor is better interpreted as trajectory structure than as calibrated epistemic uncertainty.
 
-The self-knowledge result is also conservative and should be read as conceptual unless an explicit self-model is implemented in the empirical stack. The multiplicative constant $1 + C^2/2$ is easy to derive and easy to explain, but it is unlikely to be tight for expressive policies. Richer divergences or chi-squared style refinements may sharpen the bound, but the current form already isolates the main conceptual point: posterior quality in adaptive systems is bottlenecked by self-knowledge, not just by moment estimation.
+The self-knowledge result is also conservative and should be read as conceptual unless an explicit self-model is implemented in the empirical stack. The additive ceiling $L_{\mathrm{self}}(\theta)+C$ is easy to derive and easy to explain, but it is unlikely to be tight for expressive policies: $C$ depends on worst-case log-ratios, and tighter bounds could be obtained by replacing the pointwise bound with, e.g., a chi-squared or R\'enyi-divergence argument over a subset of $\mathcal{Y}$ carrying most of the mass of $\pi_\theta$. The current form already isolates the main conceptual point: posterior quality in adaptive systems is bottlenecked by self-knowledge, not just by moment estimation.
 
 The most natural extension is to richer posterior families such as MultiSWAG or mixture approximations over multiple alignment basins. A second direction is to combine Meta-SWAG with causal or mechanistic diagnostics so that posterior samples are not only uncertain but also interpretable. For the present paper, however, the goal is narrower: establish that one retained-checkpoint posterior construction can be used on adaptive learning trajectories in both MARL and LLM alignment, without claiming that the two domains share the same underlying non-stationarity beyond that abstraction.
 
@@ -419,24 +567,27 @@ For MARL, the same averaging is performed over policy outputs or rollout-level s
 
 \section{Expanded Theory Notes}
 
-\subsection{Theorem 1 Notes}
+\subsection{Theorem~\ref{thm:var} Notes}
 
-The first theorem should be read as a posterior analogue of the variance reduction seen in evidence-weighted policy gradients. A longer proof path for the paper version is: decompose predictive variance into within-checkpoint and between-checkpoint components; show that evidence weighting controls the within-checkpoint component by the harmonic mean of checkpoint-level variances; and show that the between-checkpoint term vanishes in the degenerate point-estimate limit and remains controlled whenever the retained trajectory lies in a single basin. The reward-overoptimization corollary is not automatic from this argument. It needs an extra bridge assumption tying proxy-gold gap to predictive dispersion on the retained posterior support.
+The variance theorem is the posterior analogue of the AM--HM improvement from evidence-weighted policy gradient estimators, but applied to the checkpoint-level predictive variance rather than to the gradient second moment. The longer proof path for a paper version is: (i) apply the law of total variance in~\eqref{eq:lotv} to decompose the predictive variance into within- and between-checkpoint components; (ii) apply Chebyshev's sum inequality \citep[\S2.17]{HardyLittlewoodPolya1952} to bound the within-checkpoint component by $\AM(V)$ under Assumption~\ref{as:evar}; (iii) specialise to inverse-variance weighting to obtain the tight $\HM(V)$ value. The between-checkpoint component is controlled separately whenever the retained trajectory stays in a single stable region, so that $\sup_{j,k}\|\mu_j-\mu_k\|$ is bounded. The alignment corollary, Corollary~\ref{cor:align-var}, is \emph{conditional} on the bridge $\Phi\circ g$ from predictive dispersion to proxy--gold gap; the experimental protocol must test this bridge rather than assume it.
 
-\subsection{Theorem 2 Notes}
+\subsection{Theorem~\ref{thm:geom} Notes}
 
-The geometry theorem depends on a local stationary approximation. In the final write-up it will help to isolate two claims that are currently bundled together: the retained trajectory mixes within a stable basin, and the empirical covariance estimates the local second-order geometry of that basin. The theorem does not claim global posterior calibration, and any robustness-under-shift interpretation requires a separate assumption linking deployment shifts to the retained LoRA subspace.
+Two claims should be isolated in the final write-up: first, that the retained trajectory mixes inside a stable basin (A2)--(A3), so that sample moments converge; second, that the empirical covariance estimator converges to the stationary local covariance $\Sigma_\infty$ of~\eqref{eq:lyap}. The eigenvalue-gap condition (iv) is necessary for pointwise convergence of individual eigenvectors; without it, only the invariant subspace converges (Davis--Kahan $\sin\Theta$ theorem \citep{DavisKahan1970}). The theorem makes no claim about global posterior calibration, and any robustness-under-shift interpretation requires the additional subspace-sensitivity bridge spelled out as Remark~\ref{rem:diag}.
 
-\subsection{Theorem 3 Notes}
+\subsection{Theorem~\ref{thm:self} Notes}
 
-The self-knowledge theorem is a limitation principle rather than a completed empirical theorem for the current stack, so the appendix should carry a slightly more explicit derivation together with a short note about what would be required to instantiate $L_{\mathrm{self}}$ for DPO, PPO, or GRPO. Start from
-\begin{equation}
-\KL(\pi_\theta \,\|\, \hat{\pi}_{q_T})
-=
-\KL(\pi_\theta \,\|\, \tilde{\pi}_\theta)
-+ \E_{\pi_\theta}\left[\log \frac{\tilde{\pi}_\theta}{\hat{\pi}_{q_T}}\right].
+The self-knowledge theorem is a conceptual ceiling, not a completed empirical theorem for current aligners. The derivation is elementary: insert $\tilde\pi_\theta$ in the log-ratio,
+\begin{equation}\label{eq:self-app}
+\KL\!\bigl(\pi_\theta \,\big\|\, \hat\pi_{q_T}\bigr)
+\;=\;
+\KL\!\bigl(\pi_\theta \,\big\|\, \tilde\pi_\theta\bigr)
+\;+\;
+\E_{Y\sim\pi_\theta}\!\left[\log \frac{\tilde\pi_\theta(Y)}{\hat\pi_{q_T}(Y)}\right],
 \end{equation}
-Then identify the first term with $L_{\mathrm{self}}(\theta)$, bound the second term using the uniform log-density ratio constant $C$, move from total variation to KL using Pinsker, absorb the mixed term with Young's inequality, and append the finite-sample posterior approximation term $O(T^{-1})$.
+identify the first term as $L_{\mathrm{self}}(\theta)$, and bound the second pointwise by $C$ of~\eqref{eq:C}. This gives the \emph{additive} bound $L_{\mathrm{self}}(\theta) + C$; adding the $O(T^{-1})$ error from the Meta-SWAG moment estimates (under A3) yields~\eqref{eq:self}.
+
+A multiplicative form in $L_{\mathrm{self}}$ alone --- as appeared in an earlier draft --- does not follow from~\eqref{eq:self-app} without an \emph{a priori} relationship between $C$ and $L_{\mathrm{self}}$. A Young-style split of any product $C\sqrt{L_{\mathrm{self}}}$ yields only $\alpha L_{\mathrm{self}} + C^2/(4\alpha)$ for any $\alpha>0$, i.e.\ an additive bound in $L_{\mathrm{self}}$ and $C^2$. Instantiating Theorem~\ref{thm:self} for DPO, PPO, or GRPO would require (a) an operational surrogate for the aligner's self-model $\tilde\pi_{\theta_0}$ (for example, the reference policy used in the KL-regularization term of DPO or PPO, treated as an approximation to the base policy), and (b) a way to upper-bound either $L_{\mathrm{self}}(\theta_0)$ directly or the uniform log-ratio $C$ defined by~\eqref{eq:C}.
 
 \section{Experiment Protocols}
 

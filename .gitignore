@@ -6,7 +6,6 @@ node_modules/
 .next/
 build/
 dist/
-*.pdf
 .DS_Store
 pytest-cache-files-*
 

@@ -51,6 +51,25 @@ python3 experiments/run_mlp_ipd.py \
   --out_dir artifacts/mlp
 ```
 
+Regenerate the appendix constant-vs-two-phase MLP comparison with:
+
+```bash
+python3 experiments/run_mlp_ipd.py \
+  --skip_ablation \
+  --run_annealing_compare \
+  --anneal_seeds 20 \
+  --anneal_steps 2000 \
+  --anneal_phase1_steps 100 \
+  --anneal_scale 30 \
+  --anneal_power 0.7 \
+  --anneal_log_every 20 \
+  --batch_size 384 \
+  --peer_coef 1.5 \
+  --own_coef 0.35 \
+  --inner_lr 0.55 \
+  --out_dir artifacts/mlp
+```
+
 Recompile the paper with:
 
 ```bash
